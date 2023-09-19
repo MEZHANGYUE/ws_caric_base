@@ -1,0 +1,52 @@
+{
+    "configurations": [
+        {
+            "browse": {
+                "databaseFilename": "${default}",
+                "limitSymbolsToIncludedHeaders": false
+            },
+            "includePath": [
+                "/home/yue/ws_caric/devel/include/**",
+                "/home/yue/catkin_ws/devel/include/**",
+                "/opt/ros/melodic/include/**",
+                "/home/yue/ws_caric/src/caric_mission/include/**",
+                "/home/yue/catkin_ws/src/pred-occ-planner/utils/DecompROS/decomp_ros_utils/include/**",
+                "/home/yue/catkin_ws/src/pred-occ-planner/eval_helper/include/**",
+                "/home/yue/catkin_ws/src/pred-occ-planner/uav_simulator/map_generator/dynamic_map_generator/include/**",
+                "/home/yue/ws_caric/src/rotors_simulator/mav_lowlevel_attitude_controller/include/**",
+                "/home/yue/ws_caric/src/rotors_simulator/mav_comm/mav_msgs/include/**",
+                "/home/yue/ws_caric/src/rotors_simulator/mav_comm/mav_planning_msgs/include/**",
+                "/home/yue/catkin_ws/src/pred-occ-planner/uav_simulator/mockamap/include/**",
+                "/home/yue/catkin_ws/src/pred-occ-planner/uav_simulator/multi_map_server/include/**",
+                "/home/yue/catkin_ws/src/pred-occ-planner/path_searching/include/**",
+                "/home/yue/catkin_ws/src/pred-occ-planner/plan_env/include/**",
+                "/home/yue/catkin_ws/src/pred-occ-planner/plan_manager/include/**",
+                "/home/yue/catkin_ws/src/pred-occ-planner/uav_simulator/pose_utils/include/**",
+                "/home/yue/catkin_ws/src/pred-occ-planner/uav_simulator/quadrotor_msgs/include/**",
+                "/home/yue/ws_caric/src/rotors_simulator/rotors_control/include/**",
+                "/home/yue/ws_caric/src/rotors_simulator/rotors_gazebo_plugins/include/**",
+                "/home/yue/ws_caric/src/rotors_simulator/rotors_hil_interface/include/**",
+                "/home/yue/ws_caric/src/rotors_simulator/rotors_joy_interface/include/**",
+                "/home/yue/catkin_ws/src/pred-occ-planner/utils/separator/include/**",
+                "/home/yue/catkin_ws/src/pred-occ-planner/uav_simulator/so3_control/include/**",
+                "/home/yue/catkin_ws/src/pred-occ-planner/uav_simulator/so3_quadrotor_simulator/include/**",
+                "/home/yue/catkin_ws/src/pred-occ-planner/traj_coordinator/include/**",
+                "/home/yue/ws_caric/src/traj_gennav/include/**",
+                "/home/yue/catkin_ws/src/pred-occ-planner/traj_opt/include/**",
+                "/home/yue/catkin_ws/src/pred-occ-planner/traj_server/include/**",
+                "/home/yue/catkin_ws/src/pred-occ-planner/traj_utils/include/**",
+                "/home/yue/catkin_ws/src/pred-occ-planner/uav_simulator/uav_utils/include/**",
+                "/home/yue/ws_caric/src/unicon/include/**",
+                "/home/yue/ws_caric/src/velodyne_simulator/velodyne_gazebo_plugins/include/**",
+                "/usr/include/**",
+                "${workspaceFolder}/caric_baseline-main/include"
+            ],
+            "name": "ROS",
+            "intelliSenseMode": "gcc-x64",
+            "compilerPath": "/usr/bin/gcc",
+            "cStandard": "gnu11",
+            "cppStandard": "c++14"
+        }
+    ],
+    "version": 4
+}
