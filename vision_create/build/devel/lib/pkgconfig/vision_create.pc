@@ -1,0 +1,8 @@
+prefix=/home/lab318/ws_HCPP/src/vision_create/build/devel
+
+Name: vision_create
+Description: Description of vision_create
+Version: 0.0.0
+Cflags: 
+Libs: -L${prefix}/lib 
+Requires: 

@@ -34,32 +34,33 @@
 #include "general_task_init.h"
 #include "Astar.h"
 #include <map>
-struct agent_local
+struct agent_local   //记录智能体状态结构体
 {
-    bool in_bounding_box = false;
-    bool planning_in_bounding_box = false;
-    Eigen::Vector3i position_index;
-    Eigen::Vector3i planning_index;
-    double time = 0;
-    double state = 0;
-    double priority = 0;
+    bool in_bounding_box = false;   //智能体在边界框内
+    bool planning_in_bounding_box = false;  //规划点在边界框内
+    Eigen::Vector3i position_index;   // 位置点，三维向量表示
+    Eigen::Vector3i planning_index;   //规划点位置
+    double time = 0;  //记录更新时间
+    double state = 0;                          //状态记录什么？
+    double priority = 0;  //优先级
 };
 
-struct info
+struct info   //保存智能体更新信息
 {
-    bool get_info = false;
+    bool get_info = false;   //标记获取到智能体信息
     double message_time = 0;
     Eigen::Vector3d global_point;
-    list<Eigen::Vector3d> global_path = {};
+    list<Eigen::Vector3d> global_path = {};  //保存路径点
     int state = 0;
     int priority = 0;
 };
 
+//封装智能体数据
 class info_agent
 {
 public:
     
-    info_agent()
+    info_agent()  //构造函数1：无输入，初始化成员信息
     {
         namelist = {"/jurong", "/raffles", "/changi", "/sentosa", "/nanyang"};
         Agent_dict["/jurong"] = {false, 0, Eigen::Vector3d(0, 0, 1), {}, 0, 5};
@@ -69,7 +70,7 @@ public:
         Agent_dict["/nanyang"] = {false, 0, Eigen::Vector3d(0, 0, 5), {}, 0, 1};
     }
     
-    info_agent(vector<string> teammate)
+    info_agent(vector<string> teammate)  //构造函数2：输入一个队伍，字符串向量包含每一个成员名称，并获取该分组的 leader 名称。
     {
         namelist = {"/jurong", "/raffles", "/changi", "/sentosa", "/nanyang"};
         Agent_dict["/jurong"] = {false, 0, Eigen::Vector3d(0, 0, 1), {}, 0, 5};
@@ -90,33 +91,32 @@ public:
         }
     }
     
-    int get_leader_state()
+    int get_leader_state()  //返回领导者状态state
     {
         return Agent_dict[leader].state;
     }
     
-    string get_leader()
+    string get_leader()  //返回领导者名称
     {
         return leader;
     }
     
-    void get_leader_position(Eigen::Vector3d &target)
+    void get_leader_position(Eigen::Vector3d &target) //获取领导者位置到指针
     {
         // cout<<"leader:"<<leader<<endl;
         target = Agent_dict[leader].global_point;
     }
     
-    void update_state(string name, int state_in)
+    void update_state(string name, int state_in)  //更新设置智能体状态
     {
-
         Agent_dict[name].state = state_in;
     }
     
-    void reset_position_path(istringstream &str)
+    void reset_position_path(istringstream &str)   // 根据字符流更新智能体 位置和路径   str：name；position；路径点.;.;.;.;.;.;  将信息保存到  Agent_dict[name];
     {
         string name;
         getline(str, name, ';');
-        if (name != "/jurong" && name != "/raffles" && name != "/changi" && name != "sentosa" && name != "/nanyang")
+        if (name != "/jurong" && name != "/raffles" && name != "/changi" && name != "sentosa" && name != "/nanyang")   //检查智能体名称是否有效
         {
             return;
         }
@@ -126,16 +126,16 @@ public:
             getline(str, position_str, ';');
             info info_temp;
             info_temp.get_info = true;
-            info_temp.global_point = str2point(position_str);
+            info_temp.global_point = str2point(position_str);  //位置点字符串信息转换为三维向量
             string path_point;
             while (getline(str, path_point, ';'))
             {
                 info_temp.global_path.push_back(str2point(path_point));
             }
-            info_temp.message_time = ros::Time::now().toSec();
+            info_temp.message_time = ros::Time::now().toSec();   //记录更新时间
             info_temp.state = Agent_dict[name].state;
             info_temp.priority = Agent_dict[name].priority;
-            Agent_dict[name] = info_temp;
+            Agent_dict[name] = info_temp;   // 将信息保存到Agent_dict
         }
     }
 
@@ -146,9 +146,9 @@ private:
     
     string leader;
     
-    map<string, info> Agent_dict;
+    map<string, info> Agent_dict;  //保存了每一个智能体的信息，包括位置，全局路径，状态....
     
-    void cout_name(string name)
+    void cout_name(string name)  //打印智能体信息，没用到
     {
         cout << name << endl;
         info info_in = Agent_dict[name];
@@ -165,7 +165,7 @@ private:
         cout << endl;
     }
     
-    Eigen::Vector3d str2point(string input)
+    Eigen::Vector3d str2point(string input)  //字符串点转换为三维向量
     {
         Eigen::Vector3d result;
         std::vector<string> value;
@@ -184,13 +184,16 @@ private:
     }
 };
 
+//封装地图处理
 class grid_map
 {
 public:
-    grid_map() {}
+    grid_map() {}  //构造函数1：无输入
 
     // Function use boundingbox message to build map
-    grid_map(Boundingbox box, Eigen::Vector3d grid_size_in, int Teamsize_in, vector<string> team_list)
+    //构造函数2：边界框，栅格大小，组内成员个数，组内成员字符串
+    //获取更随着follower字符串向量
+    grid_map(Boundingbox box, Eigen::Vector3d grid_size_in, int Teamsize_in, vector<string> team_list)  
     {
         local_dict["/jurong"] = {false, false, Eigen::Vector3i(0, 0, -1), Eigen::Vector3i(0, 0, -1), 0, 0, 5};
         local_dict["/raffles"] = {false, false, Eigen::Vector3i(0, 0, -1), Eigen::Vector3i(0, 0, -1), 0, 0, 4};
@@ -198,29 +201,29 @@ public:
         local_dict["/changi"] = {false, false, Eigen::Vector3i(0, 0, -1), Eigen::Vector3i(0, 0, -1), 0, 0, 2};
         local_dict["/nanyang"] = {false, false, Eigen::Vector3i(0, 0, -1), Eigen::Vector3i(0, 0, -1), 0, 0, 1};
         namelist = {"/jurong", "/raffles", "/changi", "/sentosa", "/nanyang"};
-        for (auto &name : team_list)
+        for (auto &name : team_list)  //遍历组内成员，获取follower；
         {
             if (name == "jurong" || name == "raffles")
             {
                 continue;
             }
-            follower.push_back("/" + name);
+            follower.push_back("/" + name);  //字符串向量保存跟随者（摄影者）；
         }
         team_size = Teamsize_in;
-        fly_in_index = Eigen::Vector3i(0, 0, 0);
+        fly_in_index = Eigen::Vector3i(0, 0, 0);  //飞入点
         rotation_matrix = box.getSearchRotation();
         rotation_matrix_inv = rotation_matrix.inverse();
         rotation_quat = Eigen::Quaterniond(rotation_matrix_inv);
         map_global_center = box.getCenter();
         map_quat_size = box.getRotExtents();
         grid_size = grid_size_in;
-        initial_the_convert();
+        initial_the_convert();       ////初始化栅格地图大小和栅格地图存储单元
         interval = floor(map_shape.z() / team_size);
         cout << "Teamsize:"
              << "team_size" << endl; // test
         for (int i = 1; i < Teamsize_in; i++)
         {
-            region_slice_layer.push_back(i * interval);
+            region_slice_layer.push_back(i * interval); //按照无人机个数分配搜索区域，Z轴分界
             finish_flag.push_back(0);
             finish_exp_flag.push_back(0);
         }
@@ -228,7 +231,7 @@ public:
     }
 
     // Function use grid size to build map used in construct the global map
-    grid_map(Eigen::Vector3d grid_size_in)
+    grid_map(Eigen::Vector3d grid_size_in)  //构造函数3：输入栅格大小
     {
         local_dict["/jurong"] = {false, false, Eigen::Vector3i(0, 0, -1), Eigen::Vector3i(0, 0, -1), 0, 0, 5};
         local_dict["/raffles"] = {false, false, Eigen::Vector3i(0, 0, -1), Eigen::Vector3i(0, 0, -1), 0, 0, 4};
@@ -240,15 +243,15 @@ public:
         map_global_center = Eigen::Vector3d(0, 0, 0);
         map_quat_size = Eigen::Vector3d(200, 200, 100);
         grid_size = grid_size_in;
-        rotation_matrix = Eigen::Matrix3d::Identity();
-        rotation_matrix_inv = rotation_matrix.inverse();
-        rotation_quat = Eigen::Quaterniond(rotation_matrix_inv);
-        initial_the_convert();
-        set_under_ground_occupied();
+        rotation_matrix = Eigen::Matrix3d::Identity(); //单位矩阵，没有旋转，通常用作旋转矩阵的初始值
+        rotation_matrix_inv = rotation_matrix.inverse();  //旋转矩阵的逆，表示旋转矩阵的反方向旋转；
+        rotation_quat = Eigen::Quaterniond(rotation_matrix_inv);  //旋转矩阵的四元数表示；
+        initial_the_convert();            ////初始化栅格地图大小和栅格地图存储单元
+        set_under_ground_occupied(); //标记地面栅格
     }
 
     // Function for update the map and interest point
-    void insert_point(Eigen::Vector3d point_in)
+    void insert_point(Eigen::Vector3d point_in)  // 将世界坐标系中的点坐标转换到栅格地图中的坐标，并初始化栅格地图
     {
         Eigen::Vector3d point_in_local = rotation_matrix * (point_in - map_global_center);
         if (out_of_range(point_in_local, false))
@@ -364,7 +367,7 @@ public:
         return markers;
     }
 
-    void update_position(Eigen::Vector3d point)
+    void update_position(Eigen::Vector3d point) // 世界坐标系中的点坐标point
     {
         Eigen::Vector3d point_local = rotation_matrix * (point - map_global_center);
         if (out_of_range(point_local, false))
@@ -372,7 +375,7 @@ public:
             in_my_range = false;
             return;
         }
-        Eigen::Vector3i index = get_index(point);
+        Eigen::Vector3i index = get_index(point);   // 将世界坐标系中的点坐标转换到栅格地图中的坐标
         if (now_position_index != index && visited_map[index.x()][index.y()][index.z()] == 0 && search_direction.empty())
         {
             search_direction = get_search_target(index);
@@ -392,7 +395,7 @@ public:
         in_my_range = true;
     }
 
-    Eigen::Vector3i get_index(Eigen::Vector3d point_in)
+    Eigen::Vector3i get_index(Eigen::Vector3d point_in)  // 将世界坐标系中的点坐标转换到栅格地图中的坐标
     {
         Eigen::Vector3d point_in_local = rotation_matrix * (point_in - map_global_center);
         Eigen::Vector3i bias_index(0, 0, 0);
@@ -447,20 +450,20 @@ public:
         return result;
     }
     
-    void Astar_local(Eigen::Vector3d target, string myname, string leader_name, bool &flag, bool islong)
+    void Astar_local(Eigen::Vector3d target, string myname, string leader_name, bool &flag, bool islong) //局部规划路径
     {
         vector<vector<vector<int>>> map_temp = map;
-        if (myname == "/jurong" || myname == "/raffles")
+        if (myname == "/jurong" || myname == "/raffles")  //探索者
         {
             if (true)
             { // Here condition should be whether need waiting;
-                for (auto &name : namelist)
+                for (auto &name : namelist)  //更新其他智能体信息
                 {
                     if (myname == name)
                     {
                         continue;
                     }
-                    else
+                    else  
                     {
                         if (fabs(ros::Time::now().toSec() - local_dict[name].time) < 1 || true)
                         {
@@ -500,19 +503,19 @@ public:
                     path_final_global = target;
                     path_index = path_tamp;
                 }
-                generate_the_global_path();
+                generate_the_global_path(); //将path_index  的点倒序得到全局路径path_globle
                 return;
             }
             else
             {
                 path_index = {};
-                generate_the_global_path();
+                generate_the_global_path(); //将path_index  的点倒序得到全局路径path_globle
                 return;
             }
         }
-        else
+        else  //摄影者
         {
-            for (auto &name : namelist)
+            for (auto &name : namelist)  //更新除本机和探索者外的智能体位置信息，更新地图
             {
                 if (myname == name || name == leader_name)
                 {
@@ -561,15 +564,15 @@ public:
                 path_final_global = target;
                 path_index = path_tamp;
             }
-            generate_the_global_path();
+            generate_the_global_path();   //产生路径信息nav_msgs::Path  path_global_show_message； //将path_index  的点倒序得到全局路径path_globle
             return;
         }
     }
     
-    void Astar_photo(Eigen::Vector3d target, string myname, bool &flag)
+    void Astar_photo(Eigen::Vector3d target, string myname, bool &flag) //全局路径规划，只在摄影者的global_map全局规划中用到
     {
         vector<vector<vector<int>>> map_temp = map;
-        for (auto &name : namelist)
+        for (auto &name : namelist)  //更新其他智能体的位置信息，规划信息
         {
             if (myname == name)
             {
@@ -577,18 +580,15 @@ public:
             }
             else
             {
-                if (fabs(ros::Time::now().toSec() - local_dict[name].time) < 1||true)
+                if (local_dict[name].in_bounding_box)
                 {
-                    if (local_dict[name].in_bounding_box)
-                    {
-                        Eigen::Vector3i tar = local_dict[name].position_index;
-                        map_temp[tar.x()][tar.y()][tar.z()] = 1;
-                    }
-                    if (local_dict[name].planning_in_bounding_box)
-                    {
-                        Eigen::Vector3i tar = local_dict[name].planning_index;
-                        map_temp[tar.x()][tar.y()][tar.z()] = 1;
-                    }
+                    Eigen::Vector3i tar = local_dict[name].position_index;
+                    map_temp[tar.x()][tar.y()][tar.z()] = 1;
+                }
+                if (local_dict[name].planning_in_bounding_box)
+                {
+                    Eigen::Vector3i tar = local_dict[name].planning_index;
+                    map_temp[tar.x()][tar.y()][tar.z()] = 1;
                 }
             }
         }
@@ -610,14 +610,14 @@ public:
         generate_the_global_path();
     }
     
-    Eigen::Vector3d get_fly_in_point_global()
+    Eigen::Vector3d get_fly_in_point_global()  //返回目标点的全局坐标
     {
         // cout<<"fly in output"<<fly_in_index.transpose()<<endl;//test debug
         return get_grid_center_global(fly_in_index);
         // return get_grid_center_global(Eigen::Vector3i(0,0,1));
     }
     
-    bool check_whether_fly_in(bool print)
+    bool check_whether_fly_in(bool print)  //检查是否到达目标点
     {
         if (print)
         {
@@ -634,31 +634,31 @@ public:
         }
     }
     
-    void update_fly_in_index(bool replan)
+    void update_fly_in_index(bool replan)  //更新目标点 replan:false  ， 如果目标点已经标记为1，就更新目标点
     {
         if (map[fly_in_index.x()][fly_in_index.y()][fly_in_index.z()] == 1 || replan)
         {
             int x = fly_in_index.x();
             int y = fly_in_index.y();
             int z = fly_in_index.z();
-            int distance = min({abs(x), abs(y), abs(map_shape.x() - x), abs(map_shape.y() - y)});
+            int distance = min({abs(x), abs(y), abs(map_shape.x() - x), abs(map_shape.y() - y)});  //到边界框的最小距离
             int top;
             int bottom;
             int left;
             int right;
             int i = x;
-            int j = y;
+            int j = y;  // i,j记录当前的目标点
 
-            for (int k = z; k < map_shape.z(); k++)
+            for (int k = z; k < map_shape.z(); k++)  //z轴向上遍历
             {
-                for (distance; distance <= 3; distance++)
+                for (distance; distance <= 3; distance++)  //向边界框的长棱移动
                 {
                     top = map_shape.y() - distance;
                     bottom = distance;
                     left = distance;
                     right = map_shape.x() - distance;
 
-                    while (i < right && j == bottom)
+                    while (i < right && j == bottom)  //距离map_shape.y最近
                     {
                         if (x == i && y == j && z == k)
                         {
@@ -685,7 +685,7 @@ public:
                         }
                         i++;
                     }
-                    while (j < top && i == right)
+                    while (j < top && i == right)   //距离map_shape.x最近
                     {
                         if (x == i && y == j && z == k)
                         {
@@ -712,7 +712,7 @@ public:
                         }
                         j++;
                     }
-                    while (i > left && j == top)
+                    while (i > left && j == top)   
                     {
                         if (x == i && y == j && z == k)
                         {
@@ -775,7 +775,7 @@ public:
         }
     }
     
-    Eigen::Vector3d get_next_point(bool global)
+    Eigen::Vector3d get_next_point(bool global) //从path_global中获取下一个点
     {
         if (!path_global.empty())
         {
@@ -789,7 +789,7 @@ public:
                 return now_position_global;
             }
         }
-        else
+        else  //path_global为空
         {
             if (map[now_position_index.x()][now_position_index.y()][now_position_index.z()] == 1 && global)
             {
@@ -809,22 +809,22 @@ public:
         }
     }
     
-    nav_msgs::Path get_path_show()
+    nav_msgs::Path get_path_show()  //获取全局路径信息
     {
         return path_global_show_message;
     }
     
-    void set_state(int a)
+    void set_state(int a)  //设置状态state
     {
         mystate = a;
     }
     
-    int get_state()
+    int get_state()  //读取本机状态
     {
         return mystate;
     }
     
-    int get_state_leader()
+    int get_state_leader()  //获取领导者的状态由follower决定，  follower state全为2 或者 当前智能体state为3 -> leader state为3
     {
         bool flag_state = true;
         if (mystate == 3)
@@ -846,13 +846,8 @@ public:
         return mystate;
     }
     
-    bool get_whether_pop()
+    bool get_whether_pop()  //本机状态不为3，跟随者状态不为0：返回false
     {
-        if (mystate == 3)
-        {
-            // cout<<"mystate:"<<mystate<<endl;
-            // return true;
-        }
         if (mystate != 3)
         {
             return false;
@@ -870,19 +865,19 @@ public:
                 return false;
             }
         }
-        return true;
+        return true;    //搜索完成当前边界框，本机state为3，跟随者状态为0
     }
     
-    void exploration_layer(string myname, int region_index)
+    void exploration_layer(string myname, int region_index)   //探索者名称，边界框编号
     {
         list<Eigen::Vector3i> path_index_temp;
-        if (is_not_empty())
+        if (is_not_empty())  //地图非空
         {
-            path_index_temp = Dijkstra_search_2D_with_3D(height, region_slice_layer[region_index], myname);
+            path_index_temp = Dijkstra_search_2D_with_3D(height, region_slice_layer[region_index], myname);   //生成二维搜索路径
         }
         else
         {
-            path_index_temp = Dijkstra_search_edge(height, region_slice_layer[region_index], myname);
+            path_index_temp = Dijkstra_search_edge(height, region_slice_layer[region_index], myname);   //生成三维搜索路径
         }
         if (path_index_temp.empty())
         {
@@ -914,21 +909,21 @@ public:
         }
         path_index_temp.reverse();
         path_index = path_index_temp;
-        generate_the_global_path();
+        generate_the_global_path(); //将path_index  的点倒序得到全局路径path_globle
     }
     
     void exploration(string myname)
     {
        ////yolo();
-        for (int i = 0; i < finish_flag.size(); i++)
+        for (int i = 0; i < finish_flag.size(); i++) //探索者搜索每一个边界框
         {
             if (finish_flag[i] == 0)
             {
-                exploration_layer(myname, i);
+                exploration_layer(myname, i);  //计算探索层
                 return;
             }
         }
-        take_photo(myname);
+        take_photo(myname);    //计算拍照层
     }
     
     void take_photo(string myname)
@@ -1039,7 +1034,7 @@ public:
         return;
     }
 
-    bool is_not_empty()
+    bool is_not_empty()//判断地图是否非空
     {
         for (int x = 0; x < map_shape.x(); x++)
         {
@@ -1054,9 +1049,9 @@ public:
         return false;
     }
 
-    void update_gimbal(Eigen::Vector3d direction_global, bool print)
+    void update_gimbal(Eigen::Vector3d direction_global, bool print)  //输入全局坐标系中云台的旋转角
     {
-        if (print)
+        if (true)
         {
             cout << "direction_global:" << direction_global.transpose() << endl;
             // cout<<"matrix:"<<endl;
@@ -1249,7 +1244,7 @@ private:
     int height = 0;
     int interval = 0;
     bool finish_flag_leader = false;
-    void initial_the_convert()
+    void initial_the_convert()  //初始化栅格地图大小和栅格地图存储单元
     {
         int x_lim;
         int y_lim;
@@ -1288,12 +1283,12 @@ private:
         cout << "Map shape:" << map_shape.transpose() << endl;
         map_index_center = Eigen::Vector3i(x_lim, y_lim, z_lim);
         cout << "Map Center Index:" << map_index_center.transpose() << endl;
-        map = vector<vector<vector<int>>>(map_shape.x(), vector<vector<int>>(map_shape.y(), vector<int>(map_shape.z(), 0)));
-        interest_map = vector<vector<vector<int>>>(map_shape.x(), vector<vector<int>>(map_shape.y(), vector<int>(map_shape.z(), 0)));
-        visited_map = vector<vector<vector<int>>>(map_shape.x(), vector<vector<int>>(map_shape.y(), vector<int>(map_shape.z(), 0)));
+        map = vector<vector<vector<int>>>(map_shape.x(), vector<vector<int>>(map_shape.y(), vector<int>(map_shape.z(), 0)));  //初始化地图为0
+        interest_map = vector<vector<vector<int>>>(map_shape.x(), vector<vector<int>>(map_shape.y(), vector<int>(map_shape.z(), 0)));  //兴趣地图
+        visited_map = vector<vector<vector<int>>>(map_shape.x(), vector<vector<int>>(map_shape.y(), vector<int>(map_shape.z(), 0)));    //访问地图
         astar_planner = AStar(map, map_shape);
     }
-    void set_under_ground_occupied()
+    void set_under_ground_occupied()  //标记地面栅格
     {
         for (int x = 0; x < map_shape.x(); x++)
         {
@@ -1301,7 +1296,7 @@ private:
             {
                 for (int z = 0; z < map_shape.z(); z++)
                 {
-                    Eigen::Vector3d grid_center_global = get_grid_center_global(Eigen::Vector3i(x, y, z));
+                    Eigen::Vector3d grid_center_global = get_grid_center_global(Eigen::Vector3i(x, y, z));   //局部栅格地图坐标转化为世界坐标
                     if (grid_center_global.z() < 0.5 * grid_size.z())
                     {
                         map[x][y][z] = 1;
@@ -1360,7 +1355,7 @@ private:
     }
 
     // Function whether a local point_index is out of range
-    bool out_of_range_index(Eigen::Vector3i point)
+    bool out_of_range_index(Eigen::Vector3i point)  //判断点是否超出map_shape
     {
         if (point.x() >= 0 && point.x() < map_shape.x() && point.y() >= 0 && point.y() < map_shape.y() && point.z() >= 0 && point.z() < map_shape.z())
         {
@@ -1372,7 +1367,7 @@ private:
         }
     }
     // Function whether a local point_index is out of range and whether the z in limitation
-    bool out_of_range_index(Eigen::Vector3i point, int top_z, int bottom_z)
+    bool out_of_range_index(Eigen::Vector3i point, int top_z, int bottom_z)//判断点是否超出map_shape ，以及高度限制
     {
         if (top_z <= bottom_z)
         {
@@ -1388,9 +1383,9 @@ private:
         }
     }
     // Function to get the grid center point in global
-    Eigen::Vector3d get_grid_center_global(Eigen::Vector3i grid_index)
+    Eigen::Vector3d get_grid_center_global(Eigen::Vector3i grid_index) //局部栅格地图坐标转化为世界坐标
     {
-        Eigen::Vector3d bias = (grid_index - map_index_center).cast<double>();
+        Eigen::Vector3d bias = (grid_index - map_index_center).cast<double>();  //当前坐标在局部坐标系中的偏移
         Eigen::Vector3d local_result = bias.cwiseProduct(grid_size);
         Eigen::Vector3d global_result = rotation_matrix_inv * local_result + map_global_center;
         return global_result;
@@ -1406,7 +1401,7 @@ private:
         marker.id = id;
         marker.type = visualization_msgs::Marker::CUBE;
         marker.action = visualization_msgs::Marker::ADD;
-        Eigen::Vector3d grid_center = get_grid_center_global(index);
+        Eigen::Vector3d grid_center = get_grid_center_global(index);    //计算栅格中心点
         marker.pose.position.x = grid_center.x();
         marker.pose.position.y = grid_center.y();
         marker.pose.position.z = grid_center.z();
@@ -1440,7 +1435,7 @@ private:
         }
         return marker;
     }
-    // Function to generate 2D layer search path with 3D Dijkstra
+    // Function to generate 2D layer search path with 3D Dijkstra 生成2D层搜索路径
     list<Eigen::Vector3i> Dijkstra_search_2D_with_3D(int layer, int upper, string myname)
     {
         vector<vector<vector<int>>> grid = map;
@@ -1506,7 +1501,7 @@ private:
         // If the path is not found, return an empty list.
         return {};
     }
-    // Function to generate 3D layer search/path planning with 3D Dijkstra
+    // Function to generate 3D layer search/path planning with 3D Dijkstra  生成3D层搜索路径
     list<Eigen::Vector3i> Dijkstra_search_edge(int layer, int upper, string myname)
     {
         vector<vector<vector<int>>> grid = map;
@@ -1516,9 +1511,9 @@ private:
             {
                 continue;
             }
-            else
+            else  //其他无人机
             {
-                if (fabs(ros::Time::now().toSec() - local_dict[name].time) < 1||true)
+                if (fabs(ros::Time::now().toSec() - local_dict[name].time) < 1||true)  //true
                 {
                     // cout<<"name:"<<name<<endl;
                     if (local_dict[name].in_bounding_box)
@@ -1537,14 +1532,13 @@ private:
             }
         }
         Eigen::Vector3i start = now_position_index;
-        vector<Vector3i> directions = {Vector3i(0, 1, 0), Vector3i(0, -1, 0), Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)};
+        vector<Vector3i> directions = {Vector3i(0, 1, 0), Vector3i(0, -1, 0), Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)};  //6个扩展方向
 
         // Initialize the queue and visited flag.
         queue<list<Eigen::Vector3i>> q;
         q.push({start});
-        vector<vector<vector<bool>>> visited(map_shape.x(), vector<vector<bool>>(map_shape.y(), vector<bool>(map_shape.z(), false)));
+        vector<vector<vector<bool>>> visited(map_shape.x(), vector<vector<bool>>(map_shape.y(), vector<bool>(map_shape.z(), false))); //初始化visted三维bool矩阵false，
         visited[start.x()][start.y()][start.z()] = true;
-
         while (!q.empty())
         {
             list<Eigen::Vector3i> path = q.front();
@@ -1573,6 +1567,7 @@ private:
         // If the path is not found, return an empty list.
         return {};
     }
+    
     list<Eigen::Vector3i> Dijkstra_search_fly_in_xy(int lower, int upper, string myname)
     {
         vector<vector<vector<int>>> grid = map;
@@ -1674,7 +1669,7 @@ private:
         }
     }    
 
-    void generate_the_global_path()
+    void generate_the_global_path() //将path_index  的点倒序得到全局路径path_globle
     {
         list<Eigen::Vector3i> path_tamp(path_index);
         list<Eigen::Vector3d> point_global_list_tamp;
@@ -1685,20 +1680,6 @@ private:
         }
         nav_msgs::Path global_path_tamp;
 
-        // if (path_tamp.size() == 1)
-        // {
-        //     path_tamp.pop_back();
-        // }
-        // else if (path_tamp.size() >= 2)
-        // {
-        //     Eigen::Vector3i my_index = path_tamp.back();
-        //     path_tamp.pop_back();
-        //     if ((now_position_global - get_grid_center_global(path_tamp.back())).norm() > (get_grid_center_global(path_tamp.back()) - get_grid_center_global(my_index)).norm())
-        //     {
-        //         path_tamp.push_back(my_index);
-        //     }
-        // }
-
         path_tamp.pop_back();
 
         // path_tamp.pop_back();
@@ -1707,7 +1688,7 @@ private:
         {
             Eigen::Vector3i index_current = path_tamp.back();
             Eigen::Vector3d point_current = get_grid_center_global(index_current);
-            if (Developing)
+            if (Developing)   //true
             {
                 geometry_msgs::PoseStamped pose;
                 pose.header.frame_id = "world";
@@ -1725,6 +1706,7 @@ private:
         path_global_show_message = global_path_tamp;
         path_global = point_global_list_tamp;
     }
+
     list<Eigen::Vector3d> get_search_target(Eigen::Vector3i true_index)
     {
         list<Eigen::Vector3d> point_list;
@@ -1916,7 +1898,7 @@ public:
             spilited_str.push_back(substring);
         }
         generate_global_map(spilited_str[0]);
-        if (spilited_str.size() > 1)
+        if (spilited_str.size() > 1)  //有边界框
         {
             for (int j = 0; j < path_index.size(); j++)
             {
@@ -1971,16 +1953,17 @@ public:
         }
     }
     
-    void update_gimbal(Eigen::Vector3d gimbal_position)
+    void update_gimbal(Eigen::Vector3d gimbal_position)  // 由线速度更新云台参数
     {
+         cout << now_id <<endl;
         if (!finish_init)
         {
             return;
         }
-        Eigen::Matrix3d gimbal_rotation_matrix = Rpy2Rot(gimbal_position);
+        Eigen::Matrix3d gimbal_rotation_matrix = Rpy2Rot(gimbal_position);  //欧拉角转化为旋转矩阵
         Eigen::Matrix3d now_rot = gimbal_rotation_matrix * drone_rotation_matrix;
-        Eigen::Vector3d rpy = Rot2rpy(now_rot);
-        rpy.x() = 0;
+        Eigen::Vector3d rpy = Rot2rpy(now_rot);   //旋转矩阵转化为欧拉角，云台在全局坐标系中的旋转角
+        rpy.x() = 0;  // roll为0
 
         if (map_set.size() > now_id && !is_transfer)
         {
@@ -1994,6 +1977,7 @@ public:
     
     void update_position(Eigen::Vector3d point, Eigen::Matrix3d rotation)
     {
+        cout << now_id <<endl;
         if (!odom_get)
         {
             initial_position = point;
@@ -2017,14 +2001,15 @@ public:
         }
         odom_get = true;
     }
-    
+     
+     //规划路径
     void replan()
     {
         if (!finish_init)
         {
             return;
         }
-        if (map_set.size() == now_id && is_transfer)
+        if (map_set.size() == now_id && is_transfer) //最后一个边界框
         {
             // fly home
             if (is_leader)
@@ -2040,7 +2025,7 @@ public:
                 }
                 return;
             }
-            else
+            else  // follower
             {
                 state = 0;
                 if (state == 0)
@@ -2069,7 +2054,7 @@ public:
 
                     return;
                 }
-                else
+                else  // now_global_position.z() > 8
                 {
                     Eigen::Vector3d target;
                     info_mannager.get_leader_position(target);
@@ -2087,7 +2072,8 @@ public:
                 }
             }
         }
-        else if (finish_init && is_transfer)
+        
+        else if (finish_init && is_transfer) //初始化完成，
         {
             if (namespace_ == "/jurong" || namespace_ == "/raffles")
             {
@@ -2106,7 +2092,7 @@ public:
                 }
                ////yolo();
             }
-            else
+            else //follower
             {
                 if (state == 0)
                 {
@@ -2119,7 +2105,7 @@ public:
                 if (info_mannager.get_leader_state() == 0)
                 {
                     Eigen::Vector3d target;
-                    info_mannager.get_leader_position(target);
+                    info_mannager.get_leader_position(target);   // 将探索者的位置作为摄影者的目标位置 ，然后规划路径
                     bool flag = false;
                     global_map.Astar_local(target, namespace_, info_mannager.get_leader(), flag, false);
                     get_way_point = update_target_waypoint();
@@ -2168,7 +2154,7 @@ public:
                 path_show = map_set[now_id].get_path_show();
                 get_way_point = update_target_waypoint();
                ////yolo();
-                if (map_set[now_id].get_whether_pop())
+                if (map_set[now_id].get_whether_pop()) //当前边界框探索完成
                 {
                     now_id++;
                     state = 0;
@@ -2222,11 +2208,16 @@ public:
                 return true;
             }
         }
-        else
-        {
-            return false;
-        }
+        else return false; 
     }
+    // bool update_target_waypoint()
+    // {
+    //     if(odom_get&&finish_init)
+    //     {
+            
+    //     }
+    //     else return false;
+    // }
     
     bool get_cmd(trajectory_msgs::MultiDOFJointTrajectory &cmd, geometry_msgs::Twist &gimbal)
     {
@@ -2358,7 +2349,18 @@ public:
         msg = "state;" + namespace_ + ";" + to_string(state) + ";";
         return true;
     }
+    /********************************************************************************
+    输入：str
+    第一个字符串topic：position/state/state_set/map/mapglobal/visit/flyin
 
+    每一条信息的标准形式：
+    position;智能体的位置信息 local_dict[name];
+    state;智能体名称;state;
+    state_set;组别信息;智能体名称;state;
+    map;组别信息;地图所占栅格数量;所有栅格坐标;;;;
+    mapglobal;组别信息;地图所占栅格数量;所有栅格坐标;;;;
+    visit;组别信息;目标点;
+    ****************************************************************************/
     void communicate(string str)
     {
         if (!finish_init)
@@ -2392,7 +2394,7 @@ public:
             }
 
             return;
-        }
+    }
         else if (topic == "state")
         {
             string orin;
@@ -2663,7 +2665,7 @@ private:
         if (map_set.size() > now_id)
         {
             global_map.insert_point(point_in);
-            for (auto &element : map_set)
+            for (auto &element : map_set) //遍历每一个地图区域
             {
                 element.insert_point(point_in);
             }
@@ -2673,6 +2675,7 @@ private:
             global_map.insert_point(point_in);
         }
     }
+
     bool is_Nbr(Eigen::Vector3d test, vector<Eigen::Vector3d> Nbr_point)
     {
         if (Nbr_point.size() == 0)
@@ -2702,8 +2705,8 @@ private:
         {
             target_yaw = 0;
         }
-        trajectory_msgs::MultiDOFJointTrajectory trajset_msg;
-        trajectory_msgs::MultiDOFJointTrajectoryPoint trajpt_msg;
+        trajectory_msgs::MultiDOFJointTrajectory trajset_msg;            //轨迹  ， 包含轨迹点
+        trajectory_msgs::MultiDOFJointTrajectoryPoint trajpt_msg;   //轨迹点  ， 包括位姿信息 速度 加速度
         trajset_msg.header.frame_id = "world";
         geometry_msgs::Transform transform_msg;
         geometry_msgs::Twist accel_msg, vel_msg;
@@ -2811,6 +2814,47 @@ private:
     }
 };
 
+// class TSP_Slover
+// {
+//     public:
+//     TSP_Slover(){} 
+//     TSP_Slover(Eigen::Vector3d agentpose, list<Eigen::Vector3d> viewpoint)  //从无人机的位置到达所有的视点
+//     {
+//         //将无人机的位置加入视点列表
+//         list<Eigen::Vector3d> viewpoint_ = viewpoint;
+//         viewpoint_.push_front(agentpose);
+//         //计算带起始点约束的TSP问题
+//         viewpoint_distant_Mat = calculate_distant_mat(viewpoint_)
+//         waypoint = calculate_sort_viewpoint(viewpoint_distant_Mat);
+//     }
+//     TSP_Slover(Eigen::Vector3d agentpose, list<Eigen::Vector3d> viewpoint, Eigen::Vector3d lastpose) //从无人机的位置到达所有视点并指定终点位置
+//     {
+//         //将无人机的位置和终点位置加入视点列表
+//         list<Eigen::Vector3d> viewpoint_ = viewpoint;
+//         viewpoint_.push_front(agentpose);
+//         viewpoint_.push_back(lastpose);
+//         //计算带起始点约束和终点约束的TSP问题
+//         viewpoint_distant_Mat = calculate_distant_mat(viewpoint_)
+//         waypoint = calculate_sort_viewpoint(viewpoint_distant_Mat);
+//     }
+     
+//     private:
+
+//     list<Eigen::Vector3d> waypoint; //视点排列完成后的路径点序列
+//     Eigen::Matrix viewpoint_distant_Mat ; //视点列表的距离矩阵
+//     Eigen::Matrix calculate_distant_mat(list<Eigen::Vector3d> viewpoint)  //输入视点，计算距离矩阵
+//     {
+//         Eigen::Matrix result;
+//         /**/
+//         return result;
+//     }
+//     list<Eigen::Vector3d> calculate_sort_viewpoint(viewpoint_distant_Mat)  //排列后的视点顺序路径点
+//     {
+//         list<Eigen::Vector3d> result;
+//         return result;
+//     }
+// };
+
 class Agent
 {
 public:
@@ -2824,6 +2868,7 @@ public:
         TimerViz      = nh_ptr->createTimer(ros::Duration(1.0 / 1.0),  &Agent::TimerVizCB,      this);
 
         task_sub_ = nh_ptr->subscribe("/task_assign" + nh_ptr->getNamespace(), 10, &Agent::TaskCallback, this);
+        
         com_sub_  = nh_ptr->subscribe("/broadcast" + nh_ptr->getNamespace(), 10, &Agent::ComCallback, this);
         client    = nh_ptr->serviceClient<caric_mission::CreatePPComTopic>("/create_ppcom_topic");
         communication_pub_ = nh_ptr->advertise<std_msgs::String>("/broadcast", 10);
@@ -2848,7 +2893,7 @@ public:
             std::this_thread::sleep_for(chrono::milliseconds(1000));
         }
         communication_initialise = true;
-
+        cout << "/task_assign" <<nh_ptr->getNamespace() <<endl;
         odom_sub_        = nh_ptr->subscribe("/ground_truth/odometry", 10, &Agent::OdomCallback, this);
         gimbal_sub_      = nh_ptr->subscribe("/firefly/gimbal", 10, &Agent::GimbalCallback, this);
 
@@ -2931,11 +2976,10 @@ private:
     bool communication_initialise = false;
     // Callback function
 
-    void TaskCallback(const std_msgs::String msg)
+    void TaskCallback(const std_msgs::String msg)  //接收到taskassign
     {
-
-        // cout<<nh_ptr->getNamespace()<<"Task begin"<<endl;
-        if (pre_task == msg.data && pre_task != "")
+        cout<<"Get the Task message. "<<endl;
+        if (pre_task == msg.data && pre_task != "") //消息未更新
         {
             map_initialise = true;
             return;
@@ -2948,6 +2992,7 @@ private:
 
     void ComCallback(const std_msgs::String msg)
     {
+        cout << "Get the broadcast message." << endl;
         if(!map_initialise)
         {
             return;
@@ -3003,23 +3048,29 @@ private:
 
         Eigen::Vector3d my_position = Eigen::Vector3d(msg->pose.pose.position.x, msg->pose.pose.position.y, msg->pose.pose.position.z);
         Eigen::Matrix3d R = Eigen::Quaterniond(msg->pose.pose.orientation.w, msg->pose.pose.orientation.x, msg->pose.pose.orientation.y, msg->pose.pose.orientation.z).toRotationMatrix();
+        cout << nh_ptr->getNamespace() << " now_id :   " ;
         mm.update_position(my_position, R);
     }
 
     void GimbalCallback(const geometry_msgs::TwistStamped &msg)
     {
+        // std::cout << "gimbal data is updated." << std::endl;
         if(!map_initialise)
         {
+            // cout << "map is not initial !" << endl;
             return;
         }
+        std::cout << "gimbal data is updated." << std::endl;
         Eigen::Vector3d position = Eigen::Vector3d(msg.twist.linear.x, msg.twist.linear.y, msg.twist.linear.z);
-        mm.update_gimbal(position);
+        mm.update_gimbal(position);  //输入为云台的线速度，相对于无人机的旋转角
     }
 
     void TimerProbeNbrCB(const ros::TimerEvent &)
     {
         if (!serviceAvailable || !map_initialise)
         {
+            if (!serviceAvailable) cout << "serviceAvailable is not Available !" << endl;
+            if (!map_initialise) cout << "map is not initial !" << endl;
             return;
         }
         std_msgs::String msg;
@@ -3035,13 +3086,8 @@ private:
     }
     void TimerPlanCB(const ros::TimerEvent &)
     {
-        if (!map_initialise)
-        {
-            return;
-        }
-       ////yolo();
+        if (!map_initialise) return;
         mm.replan();
-       ////yolo();
         return;
     }
 

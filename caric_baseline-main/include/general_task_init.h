@@ -891,11 +891,11 @@ class gcs_task_assign{
             }
             return result;
         }
-
+        //分组
         void Team_allocate()
         {
             team_info=vector<vector<string>>(2);
-
+            map<string,double> jurong_dis,raffles_dis;
             if(position_pair["/jurong"].update){
                 team_info[0].push_back("/jurong");
             }
@@ -910,9 +910,9 @@ class gcs_task_assign{
                     continue;
                 }
                 if(team_info[0].size()>0&&team_info[1].size()>0){
-                    double jurong_dis=(position_pair[name].position-position_pair[team_info[0][0]].position).norm();
-                    double raffles_dis=(position_pair[name].position-position_pair[team_info[1][0]].position).norm();
-                    if(jurong_dis<=raffles_dis){
+                    jurong_dis[name]=(position_pair[name].position-position_pair[team_info[0][0]].position).norm();
+                    raffles_dis[name]=(position_pair[name].position-position_pair[team_info[1][0]].position).norm();
+                    if(jurong_dis[name]<=raffles_dis[name]){
                         team_info[0].push_back(name);
                     }else{
                         team_info[1].push_back(name);
@@ -928,6 +928,51 @@ class gcs_task_assign{
                     continue;
                 }
             }
+
+            if(team_info[0].size()>0&&team_info[1].size()>0) //两个组都有成员，检查分配是否合理，
+            {
+                string transname=team_info[0][1]; //需要转移组队的无人机成员
+                if(team_info[0].size()-team_info[1].size()>1)
+                {
+                    cout << "123" << endl;
+                    while (team_info[0].size()-team_info[1].size()>1)
+                    {
+                        double dis_= raffles_dis[team_info[0][1]] - jurong_dis[team_info[0][1]];
+                        for(auto teammate:team_info[0])  //找到距离差最小的摄影无人机
+                        {
+                            if(teammate=="/jurong")     continue;
+                            if(raffles_dis[teammate] - jurong_dis[teammate] < dis_)
+                            {
+                                dis_ = raffles_dis[teammate] - jurong_dis[teammate] ;
+                                transname = teammate;
+                            }
+                        }
+                        team_info[0].erase(std::remove(team_info[0].begin(), team_info[0].end(), transname), team_info[0].end());
+                        team_info[1].push_back(transname);
+                    }
+                }
+                transname=team_info[1][1]; 
+                if(team_info[1].size()>team_info[0].size())
+                {
+                    cout << "456" <<endl;
+                    while (team_info[1].size()-team_info[0].size()>1)
+                    {
+                        double dis_= jurong_dis[team_info[1][1]] - raffles_dis[team_info[1][1]];
+                        for(auto teammate:team_info[1])  //找到距离差最小的摄影无人机
+                        {
+                            if(teammate=="/raffles")     continue;
+                            if(jurong_dis[teammate] - raffles_dis[teammate] < dis_)
+                            {
+                                dis_ = jurong_dis[teammate] - raffles_dis[teammate] ;
+                                transname = teammate;
+                            }
+                        }
+                        team_info[1].erase(std::remove(team_info[1].begin(), team_info[1].end(), transname), team_info[1].end());
+                        team_info[0].push_back(transname);
+                    }
+                }
+            }
+               
             for(int i=0;i<2;i++){
                 cout<<"team"<<i<<": "<<endl;
                 for(int j=0;j<team_info[i].size();j++){
@@ -935,10 +980,10 @@ class gcs_task_assign{
                 }
                 cout<<"team"<<i<<" finished"<<endl;
             }
-
-            
         }
-    void Best_first_search(){
+        
+    void Best_first_search() //边界框搜索顺序
+    {
         Eigen::Vector3d start_point;
         if(team_info[0].size()>0&&team_info[1].size()>0){
             start_point=position_pair[team_info[0][0]].position;
@@ -948,17 +993,22 @@ class gcs_task_assign{
             start_point=position_pair[team_info[1][0]].position;
         }
 
-        while(box_index.size()<box_set.size()){
+        while(box_index.size()<box_set.size())
+        {
             int index;
             int state;
             double mindis=std::numeric_limits<double>::max();
-            for(int i=0;i<box_set.size();i++){
-                if(find(box_index.begin(),box_index.end(),i)!=box_index.end()&&box_index.size()>0){
+            for(int i=0;i<box_set.size();i++)
+            {
+                if(find(box_index.begin(),box_index.end(),i)!=box_index.end()&&box_index.size()>0)
+                {
                     continue;
                 }
-                for(int j=0;j<2;j++){  
+                for(int j=0;j<2;j++)
+                {  
                     double dis=(box_set[i].get_global_in_out(j)-start_point).norm();
-                    if(dis<mindis){
+                    if(dis<mindis)
+                    {
                         mindis=dis;
                         state=j;
                         index=i;
@@ -977,7 +1027,7 @@ class gcs_task_assign{
         }
 
     }
-    void Clip_the_task()
+    void Clip_the_task()  //按边界框体积分配无人机任务范围，保存在output_path[];
     {
         double volum_path = 0;
         int clip_index = -1;
@@ -998,16 +1048,17 @@ class gcs_task_assign{
         {
             output_path[1]=BFS_result;
             return;
-
-        }else if(team_info[0].size()>0&&team_info[1].size()==0)
+        }
+        else if(team_info[0].size()>0&&team_info[1].size()==0)
         {
             output_path[0]=BFS_result;
             return;
-        }else if(team_info[0].size()>0&&team_info[1].size()>0)
+        }
+        else if(team_info[0].size()>0&&team_info[1].size()>0)
         {
             double factor=double(team_info[0].size())/double(team_info[0].size()+team_info[1].size());
             cout<<"factor"<<to_string(factor)<<endl;
-            for(int j=0;j<BFS_result.size();j++)
+            for(int j=0;j<BFS_result.size();j++) //按体积分配任务边界框范围
             {
                 volum_path +=BFS_result[j].getVolume();
                 if (abs(volum_path / volumn_total - factor) <= 0.05)
@@ -1027,7 +1078,8 @@ class gcs_task_assign{
                 }
             }
 
-            if(clip_in_boundingbox){
+            if(clip_in_boundingbox) //对边界框进行了切割
+            {
                 for (int i = 0; i < BFS_result.size(); i++)
                 {
                     if (i < clip_index)
@@ -1045,7 +1097,9 @@ class gcs_task_assign{
                     }
                 }
                 return;
-            }else{
+            }
+            else
+            {
                 for (int i = 0; i < BFS_result.size(); i++)
                 {
                     if (i <= clip_index)
@@ -1079,7 +1133,8 @@ class gcs_task_assign{
 
         result=result+"team"+",0,"+to_string(team_info[0].size())+",";
 
-        for(int i=0;i<team_info[0].size();i++){
+        for(int i=0;i<team_info[0].size();i++)
+        {
             string str=team_info[0][i];
             str.erase(0, 1);
             result=result+str+",";

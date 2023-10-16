@@ -1,0 +1,8 @@
+# ninja log v5
+8	16260	1696998094459444412	CMakeFiles/check_pcd.dir/src/pcl_out.cpp.o	26dbd6436d8bd411
+8361	8927	1697028393770469127	devel/lib/vision_create/add_map	dae4044a38906fc5
+8	19898	1697028404722599041	CMakeFiles/process_pcd.dir/src/pcl_proc_new.cpp.o	11c3f10a9acefe63
+16260	16955	1696998095163444330	devel/lib/vision_create/check_pcd	e9a472957f64ba79
+9	22274	1696998100459444046	CMakeFiles/process_pcd.dir/src/pcl_proc_copy.cpp.o	70b644859c8b3af5
+19899	25779	1697028410614668916	devel/lib/vision_create/process_pcd	5644423298ead157
+8	8361	1697028393202462388	CMakeFiles/add_map.dir/src/add_map.cpp.o	8d062b24a171159c

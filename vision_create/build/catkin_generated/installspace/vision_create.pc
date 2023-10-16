@@ -1,0 +1,8 @@
+prefix=/usr/local
+
+Name: vision_create
+Description: Description of vision_create
+Version: 0.0.0
+Cflags: 
+Libs: -L${prefix}/lib 
+Requires: 
