@@ -38,6 +38,7 @@
                 "/home/yue/catkin_ws/src/pred-occ-planner/uav_simulator/uav_utils/include/**",
                 "/home/yue/ws_caric/src/unicon/include/**",
                 "/home/yue/ws_caric/src/velodyne_simulator/velodyne_gazebo_plugins/include/**",
+                "/home/yue/ws_caric/src/vision_create/include/**",
                 "/usr/include/**",
                 "${workspaceFolder}/caric_baseline-main/include"
             ],

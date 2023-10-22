@@ -79,6 +79,8 @@
         "*.txx": "cpp",
         "dense": "cpp",
         "set": "cpp",
-        "cinttypes": "cpp"
+        "cinttypes": "cpp",
+        "hash_map": "cpp",
+        "hash_set": "cpp"
     }
 }

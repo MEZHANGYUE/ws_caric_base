@@ -23,20 +23,34 @@
 #include <limits>
 #include <list>
 #include <algorithm> 
+#include <deque>
+#include <visualization_msgs/Marker.h>
+#include <visualization_msgs/MarkerArray.h>
 using namespace std::chrono_literals;
 using namespace std;
 class TSP_Slover
 {
     public:
     TSP_Slover(){} 
-    TSP_Slover(Eigen::Vector3d agentpose, list<Eigen::Vector3d> viewpoint)  //从无人机的位置到达所有的视点
+    TSP_Slover(Eigen::Vector3d agentpose, list<Eigen::Vector3d> viewpoint , int slover_method)  //从无人机的位置到达所有的视点
     {
         //将无人机的位置加入视点列表
         list<Eigen::Vector3d> viewpoint_ = viewpoint;
         viewpoint_.push_front(agentpose);
         //计算带起始点约束的TSP问题
-        waypoint = calculate_sort_viewpoint(viewpoint_,false);
+        switch (slover_method)
+        {
+        case 1:
+            cout << "dynamic plan algorithm" << endl;
+            waypoint = calculate_sort_viewpoint_dynamic(viewpoint_,false); break;
+        case 2:
+            cout << "greedy algorithm" << endl;
+            waypoint = calculate_sort_viewpoint_greedy(viewpoint_,false); break;
+        default:
+            break;
+        }
     }
+
     TSP_Slover(Eigen::Vector3d agentpose, list<Eigen::Vector3d> viewpoint, Eigen::Vector3d lastpose) //从无人机的位置到达所有视点并指定终点位置
     {
         //将无人机的位置和终点位置加入视点列表
@@ -44,125 +58,266 @@ class TSP_Slover
         viewpoint_.push_front(agentpose);
         viewpoint_.push_back(lastpose);
         //计算带起始点约束和终点约束的TSP问题
-        waypoint = calculate_sort_viewpoint(viewpoint_,false);
-    }
-    std::vector<Eigen::Vector3d> get_waypoint()
-    {
-        return waypoint;
+        waypoint = calculate_sort_viewpoint_dynamic(viewpoint_,true);
     }
 
+    list<Eigen::Vector3d> get_waypoint()
+    {
+        list<Eigen::Vector3d> res;
+        res = waypoint;
+        return res;
+    }
+    /*可视化视点和路径连接*/
+    visualization_msgs::MarkerArray visualization_msg(list<Eigen::Vector3d>& _waypoint)
+    {
+        geometry_msgs::Point pose;
+        visualization_msgs::MarkerArray result;
+        visualization_msgs::Marker _points,line;
+        _points.header.frame_id = "odom";
+        _points.header.stamp = ros::Time();
+        _points.ns = "my_namespace";
+        _points.id = 1;
+        _points.action = visualization_msgs::Marker::ADD;
+        _points.pose.orientation.w = 1.0;
+        _points.scale.x = 1;
+        _points.scale.y = 1;
+        _points.scale.z = 1;
+        _points.color.a = 1.0; // Don't forget to set the alpha!
+        _points.color.r = 0.0;
+        _points.color.g = 1.0;
+        _points.color.b = 0.0;
+        _points.type = visualization_msgs::Marker::POINTS;
+        line.header.frame_id = "odom";
+        line.header.stamp = _points.header.stamp;
+        line.ns = "my_namespace";
+        line.id = 2;
+        line.action = visualization_msgs::Marker::ADD;
+        line.pose.orientation.w = 1.0;
+        line.scale.x = 0.5;
+        line.scale.y = 0.5;
+        line.scale.z = 0.5;
+        line.color.a = 1.0; // Don't forget to set the alpha!
+        line.color.r = 1.0;
+        line.color.g = 0.0;
+        line.color.b = 0.0;
+        line.type = visualization_msgs::Marker::LINE_STRIP;  //显示路径段
+        for ( const Eigen::Vector3d&res : _waypoint)
+        {
+            pose.x = res[0];
+            pose.y = res[1];
+            pose.z = res[2];
+            _points.points.push_back(pose);
+            line.points.push_back(pose);
+        }
+        result.markers.push_back(_points);
+        result.markers.push_back(line);
+        return result;
+    }
      
     private:
-    std::vector<Eigen::Vector3d> waypoint; //视点排列完成后的路径点序列
+    visualization_msgs::MarkerArray visual_able;
+    list<Eigen::Vector3d> waypoint; //视点排列完成后的路径点序列
     std::vector<std::vector<int>> viewpoint_distant_Mat ; //视点列表的距离矩阵
-    std::vector<std::vector<int>> calculate_distant_mat(list<Eigen::Vector3d> viewpoint)  //输入视点，计算距离矩阵
-    {
-        std::vector<std::vector<int>> result;
+    std::vector<std::vector<double>> calculate_distant_mat(list<Eigen::Vector3d>& reviewpoint)  //输入视点，计算距离矩阵
+    {        
         std::vector<Eigen::Vector3d> viewpoint_;
-        for (const Eigen::Vector3d& element : viewpoint) 
+        std::vector<std::vector<double>> result;
+        for (const Eigen::Vector3d& element : reviewpoint) 
         {
             viewpoint_.push_back(element);
         }
-        /**/
-        int viewpoint_num = viewpoint.size();
+        const int viewpoint_num = viewpoint_.size();
+        double arry[viewpoint_num][viewpoint_num];
         for (int i=0 ; i<viewpoint_num ; i++)
         {
             for (int j=i ; j<viewpoint_num ; j++)
             {
-                if( i == j ) { result[i][j] = INT_MAX; continue; }
-                else {result[i][j] = (viewpoint_[i]-viewpoint_[j]).norm();   result[j][i] = result[i][j] ;}
+                if( i == j )  { arry[i][j] = INT_MAX; }
+                else {arry[i][j] = (viewpoint_[i]-viewpoint_[j]).norm();   arry[j][i] = arry[i][j] ; }
             }
+        }
+        for (int i = 0; i < viewpoint_num; i++) 
+        {
+            std::vector<double> row;
+            for (int j = 0; j < viewpoint_num; j++)  
+                row.push_back(arry[i][j]);
+            result.push_back(row);
         }
         return result;
     }
 
-   void generateSubsets(const std::vector<int>& originalSet, std::vector<int>& currentSubset, int index,std::vector<std::vector<int>>& Subset) {
-    if (index == originalSet.size()) {
-        Subset.push_back(currentSubset);
-        return;
+   void generateSubsets(const std::vector<int>& originalSet, std::vector<int>& currentSubset, int index,std::vector<std::vector<int>>& Subset) 
+   {
+        if (index == originalSet.size()) 
+        {
+            Subset.push_back(currentSubset);
+            return;
+        }
+        // 不包含当前元素的子集
+        generateSubsets(originalSet, currentSubset, index + 1,Subset);
+        // 包含当前元素的子集
+        currentSubset.push_back(originalSet[index]);
+        generateSubsets(originalSet, currentSubset, index + 1,Subset);
+        // 恢复当前子集以继续生成其他子集
+        currentSubset.pop_back();
     }
-    // 不包含当前元素的子集
-    generateSubsets(originalSet, currentSubset, index + 1,Subset);
-    // 包含当前元素的子集
-    currentSubset.push_back(originalSet[index]);
-    generateSubsets(originalSet, currentSubset, index + 1,Subset);
-    // 恢复当前子集以继续生成其他子集
-    currentSubset.pop_back();
+    
+    /*自定义排序比较函数*/
+    static bool customSort(const std::vector<int>& a, const std::vector<int>& b) 
+    {
+        if (a.size() < b.size()) 
+        {
+            return true;
+        }
+        if (a.size() > b.size()) 
+        {
+            return false;
+        }
+        return a[0] > b[0];
     }
 
-    std::vector<Eigen::Vector3d> calculate_sort_viewpoint(list<Eigen::Vector3d> viewpoint, bool is_fixed_lastpoint)  //排列后的视点顺序路径点
+    list<Eigen::Vector3d> calculate_sort_viewpoint_dynamic(list<Eigen::Vector3d> reviewpoint, bool is_fixed_lastpoint)  //动态规划排列后的视点顺序路径点
     {
         list<Eigen::Vector3d> result;
-        std::vector<std::vector<int>> distant_mat;
-        distant_mat = calculate_distant_mat (viewpoint);     //计算距离矩阵
-        const int waypoint_num = distant_mat.size();   //路径点个数
+        int waypoint_num;
+        std::vector<std::vector<double>> distant_mat;
+        distant_mat = calculate_distant_mat (reviewpoint);     //计算距离矩阵
+        /*打印距离矩阵*/
+        // for (int i=0 ; i<distant_mat.size();i++)
+        // {
+        //     for (int j=0 ; j<distant_mat[i].size() ; j++)
+        //         cout << distant_mat[i][j] << "  ";
+        //     cout << endl;
+        // }
         /*动态规划*/
-        std::deque<int> waypoint_flag; //路径点顺序标记
-        std::vector<std::vector<int>>  cost ; //代价矩阵
+        // std::deque<int> waypoint_flag; //路径点顺序标记
+        std::vector<std::vector<double>>  cost ; //代价矩阵
         std::vector<std::vector<int>> Subset;  //路径点集合所有子集
         std::vector<int> originalSet ;
-        for (int i=0 ; i<waypoint_num;i++) originalSet[i] = i;  //初始化子集序列
-        std::vector<int> currentSubset;
+        std::vector<int> currentSubset;   
+        waypoint_num = distant_mat.size();   //路径点个数
+        for (int i=1 ; i < waypoint_num ; i++)  originalSet.push_back(i);  //初始化子集序列
         generateSubsets(originalSet, currentSubset, 0,Subset);//路径点集合所有子集Subset
-        std::vector<std::vector<int>> pre; //记录路径前驱 用于路径回溯
-        std::vector<std::vector<int>> dp;
+        sort(Subset.begin(), Subset.end(), customSort);
+        /*打印子集*/
+        // for (int i=0 ; i<Subset.size();i++)
+        // {
+        //     for (int j=0 ; j<Subset[i].size() ; j++)
+        //         cout << Subset[i][j] << "  ";
+        //     cout << "  ;  ";
+        // }
+        // cout <<endl;
+        std::vector<std::vector<double>> dp;
+        double dp_re[waypoint_num][(int)pow(2,waypoint_num-1)];
+        int pre[waypoint_num][(int)pow(2,waypoint_num-1)];
         // for(int i=1;i<waypoint_num;i++) dp[i][0] = distant_mat[i][0]; //初始化第0列
-        for(int i=1;i<waypoint_num;i++) dp[i][0] = 0;   //不需要回到出发点，代价记为0
-        for (int j=1 ; j<pow(2,waypoint_num-1)-1 ; j++)
+        for(int i=1;i<waypoint_num;i++) dp_re[i][0] = 0;   //不需要回到出发点，代价记为0
+        std::vector<int> set;
+        int index_;
+        for (int j=1 ; j<pow(2,waypoint_num-1)-1 ; j++)   /*计算dp*/
         {
             for(int i=1; i<waypoint_num; i++) 
-            {
+            {                
                 if(std::find(Subset[j].begin(), Subset[j].end(), i) == Subset[j].end()) //子集中不包含元素
                 {
-                    dp[i][j] = cost[i][Subset[j][1]]+dp[Subset[j][1]][j-1];
-                    pre[i][j] = Subset[j][1];
-                    for (int k=1 ; k<Subset[j].size() ; k++)
+                    dp_re[i][j] = INT16_MAX;
+                    pre[i][j] = Subset[j][0];
+                    for (int k=0 ; k<Subset[j].size() ; k++)
                     {
-                        if (dp[i][j] != min(dp[i][j] , cost[i][Subset[j][k]]+dp[Subset[j][k]][j-1]))
-                        {
-                            dp[i][j] = min(dp[i][j] , cost[i][Subset[j][k]]+dp[Subset[j][k]][j-1]);
+                        set = Subset[j];
+                        set.erase(std::remove(set.begin(), set.end(), Subset[j][k]), set.end());
+                        auto it = std::find(Subset.begin(), Subset.end(), set);
+                        index_ = std::distance(Subset.begin(), it);
+
+                        if (dp_re[i][j] != min(dp_re[i][j] , distant_mat[i][Subset[j][k]]+dp_re[Subset[j][k]][index_]))
+                        {                            
+                            dp_re[i][j] = distant_mat[i][Subset[j][k]]+dp_re[Subset[j][k]][index_];
                             pre[i][j]=Subset[j][k];
-                        }
+                        }                        
                     }
                 }
             }
         }
-        dp[0][pow(2,waypoint_num-1)-1] = cost[0][Subset[pow(2,waypoint_num-1)-1][1]] + dp[Subset[pow(2,waypoint_num-1)-1][1]][pow(2,waypoint_num-1)-2];
-        int last = dp[0][pow(2,waypoint_num-1)-1];
-        int locad = 0;
-        for(int i=0;i<Subset.back().size();i++)
+        int lastrow = pow(2,waypoint_num-1)-1;
+        dp_re[0][lastrow] =INT16_MAX;
+        for(int k=0;k<Subset.back().size();k++)  //最后一个子集的每一个元素
         {
-            dp[0][pow(2,waypoint_num-1)-1] = min(dp[0][pow(2,waypoint_num-1)-1] , cost[0][Subset[pow(2,waypoint_num-1)-1][i]]+dp[Subset[pow(2,waypoint_num-1)-1][1]][pow(2,waypoint_num-1)-2]);
-            if (last != dp[0][pow(2,waypoint_num-1)-1]) {last = dp[0][pow(2,waypoint_num-1)-1];locad = i;}   //记录前驱第几个路径点
+            set = Subset.back(); //最后一个子集
+            set.erase(std::remove(set.begin(), set.end(), set[k]), set.end());
+            auto it = std::find(Subset.begin(), Subset.end(), set);
+            index_ = std::distance(Subset.begin(), it);
+
+            if (dp_re[0][lastrow] != min(dp_re[0][lastrow] , distant_mat[0][Subset[lastrow][k]]+dp_re[Subset[lastrow][k]][index_]))
+            {
+                dp_re[0][lastrow] = distant_mat[0][Subset[lastrow][k]]+dp_re[Subset[lastrow][k]][index_] ;
+                pre[0][lastrow] = Subset[lastrow][k];
+            }
         }
-        waypoint_flag.push_back(locad);
-        std::vector<int> currentset = Subset[pow(2,waypoint_num-1)-1]; //最后一个子集作为当前子集，用于回溯路径
-        auto it = std::find(Subset.begin(), Subset.end(), currentset);
-        int index = std::distance(Subset.begin(), it);
+        // cout  << "0  " << lastrow << "  "<< dp_re[0][lastrow] << ";  "<< "pre: "<<pre[0][lastrow]  <<endl;
+        cout << "最短路径长度 " << dp_re[0][lastrow] << endl;
+        std::vector<int> currentset = Subset[lastrow]; //最后一个子集作为当前子集，用于回溯路径
+        deque<int> waypoint_flag;
+        int _pre_,lastpre_=0;
         while(!currentset.empty())
         {
-            currentset.erase(std::remove(currentset.begin(), currentset.end(), locad), currentset.end());
-            it = std::find(Subset.begin(), Subset.end(), currentset);
-            index = std::distance(Subset.begin(), it);
-            locad = pre[locad][index];
-            waypoint_flag.push_back(locad);
+            auto it = std::find(Subset.begin(), Subset.end(), currentset);
+            int index = std::distance(Subset.begin(), it);
+
+            _pre_ = pre[lastpre_][index];
+            waypoint_flag.push_back(_pre_);  //保存前驱
+            lastpre_ = _pre_ ;
+            // cout << _pre_ << "  " ;
+            currentset.erase(std::remove(currentset.begin(), currentset.end(), _pre_), currentset.end());  //删除前驱
         }
-        /*排列视点*/
+        // /*排列视点*/
         std::vector<Eigen::Vector3d> result_re;
-        for (const Eigen::Vector3d& element : result) {
+        for (const Eigen::Vector3d& element : reviewpoint) {
             result_re.push_back(element);
         }
-        std::vector<Eigen::Vector3d> viewpoint_re;
-        for (const Eigen::Vector3d& element : viewpoint) {
-            viewpoint_re.push_back(element);
+        for (const int& element : waypoint_flag) {
+            result.push_back(result_re[element]);
         }  //列表转化成向量
-
-        result_re[0] = viewpoint_re[0];
-        for (int j=1;j<waypoint_num;j++)
+        
+        // for (const Eigen::Vector3d& element : result) {
+        //     cout << element[0] << " " << element[1] << " " << element[2] << endl;
+        // } 
+        return result;
+    }
+    list<Eigen::Vector3d> calculate_sort_viewpoint_greedy(list<Eigen::Vector3d> reviewpoint, bool is_fixed_lastpoint)  //排列后的视点顺序路径点
+    {
+        list<Eigen::Vector3d> result;
+        /*获得一个距离矩阵*/
+        std::vector<std::vector<double>> distant_mat;
+        distant_mat = calculate_distant_mat (reviewpoint); 
+        int waypoint_num =  distant_mat.size();  //路径点个数
+        std::vector<int> waypoint_flag;
+        for (int i=0 ; i<distant_mat.size() ; i++)  distant_mat[i][0] = INT16_MAX;      //起点出发，第一列赋值为无穷大
+        /*打印距离矩阵*/
+        // for (int m=0 ; m<distant_mat.size();m++)
+        // {
+        //     for (int n=0 ; n<distant_mat[i].size() ; n++)
+        //         cout << distant_mat[m][n] << "  ";
+        //     cout << endl;
+        // }
+        int index=0,dot=0;
+        for (int i=0 ; i< waypoint_num-1 ; i++)  //从起点出发，找waypoint_num-1次最近点
         {
-            result_re[j] = viewpoint_re[waypoint_flag[j-1]];
+            auto minElementIterator = std::min_element(distant_mat[dot].begin(), distant_mat[dot].end());
+            dot = std::distance(distant_mat[dot].begin(), minElementIterator);
+            for (int j=0 ; j<distant_mat.size() ; j++)  distant_mat[j][dot] = INT16_MAX;
+            waypoint_flag.push_back(dot); //保存路径点下标
+            index = dot;
+            // cout << "dot:"<<dot<<";"<<endl;
         }
-        return result_re;
+        // /*排列视点*/
+        std::vector<Eigen::Vector3d> result_re;
+        for (const Eigen::Vector3d& element : reviewpoint) {
+            result_re.push_back(element);
+        }
+        for (const int& element : waypoint_flag) {
+            result.push_back(result_re[element]);
+        }  //列表转化成向量
+        return result;
     }
 };
 
@@ -479,7 +634,7 @@ void selectViewpoint(const pcl::PointCloud<pcl::PointXYZ>::Ptr clouds,pcl::Point
                 }
             //}
         }
-        std::cout << "search_point after iteration " << j << ": (" << search_point.x << ", " << search_point.y << ", " << search_point.z << ")" << std::endl;
+        // std::cout << "search_point after iteration " << j << ": (" << search_point.x << ", " << search_point.y << ", " << search_point.z << ")" << std::endl;
         search_point = maxNeighborPoint; 
         //记录所有fov索引        
         if(cover_size>=cloud->size())
@@ -500,9 +655,11 @@ void selectViewpoint(const pcl::PointCloud<pcl::PointXYZ>::Ptr clouds,pcl::Point
             continue;
         }
         FOVPointIndices.insert(maxPointIndex);   
-        std::cout << "currentPointIndex after iteration " << j << ": " << maxPointIndex << std::endl;
+        // std::cout << "currentPointIndex after iteration " << j << ": " << maxPointIndex << std::endl;
     }
+
     std::cout << "cover_size: " << cover_size << std::endl;
+    // return FOVPointIndices;
 }
 
 //校正法向量
@@ -655,6 +812,10 @@ void filter_ground(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud)
         extract.setNegative(true); // 将为真以提取非地面点
         extract.filter(*cloud);
 }
+
+// ros::Publisher marker_pub = nh.advertise<visualization_msgs::MarkerArray>("visualization_marker", 10);
+// visualization_msgs::MarkerArray visual_able;
+// marker_pub.publish(visual_able);
 void pointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& cloud_msg) 
 {
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
@@ -682,60 +843,103 @@ void pointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& cloud_msg)
     auto start_time = std::chrono::high_resolution_clock::now();//开始计运行时间
     //
     selectViewpoint(cloud,cloud_normals,viewpoints,viewpointNormals);    
-    //
+
     auto end_time = std::chrono::high_resolution_clock::now();//结束计时
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
     std::cout << "程序运行时间：" << duration.count() << " 毫秒" << std::endl;
     //可视化
-    pcl::visualization::PCLVisualizer::Ptr viewer (new pcl::visualization::PCLVisualizer ("3D Viewer"));
-    viewer->setBackgroundColor (0, 0, 0);
-    viewer->addPointCloud<pcl::PointXYZ> (cloud,"sample cloud");//显示点云
-    viewer->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 2, "sample cloud");//设置点的大小
+    // pcl::visualization::PCLVisualizer::Ptr viewer (new pcl::visualization::PCLVisualizer ("3D Viewer"));
+    // viewer->setBackgroundColor (0, 0, 0);
+    // viewer->addPointCloud<pcl::PointXYZ> (cloud,"sample cloud");//显示点云
+    // viewer->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 2, "sample cloud");//设置点的大小
     // viewer->addPointCloudNormals<pcl::PointXYZ, pcl::Normal> (cloud, cloud_normals, 1.5, 0.4, "normals");//显示法向量
     //viewer->addSphere(Model_center, 1.5, 1.0, 0.0, 0.0, "center_sphere");//显示物体中心
-    viewer->addSphere(pcl::PointXYZ(38.86922455,-0.34078693,55.82170486), 1.5, 0.0, 0.0, 1.0, "cen1");
-    viewer->addSphere(pcl::PointXYZ(13.15921211,12.35749626,30.58357239), 1.5, 0.0, 0.0, 1.0, "cen2");
-    viewer->addSphere(pcl::PointXYZ(43.73695755,03.39359474,29.92310524), 1.5, 0.0, 0.0, 1.0, "cen3");
-    viewer->addSphere(pcl::PointXYZ(70.28045654,-12.58303833, 30.04368019), 1.5, 0.0, 0.0, 1.0, "cen4");
+    // viewer->addSphere(pcl::PointXYZ(38.86922455,-0.34078693,55.82170486), 1.5, 0.0, 0.0, 1.0, "cen1");
+    // viewer->addSphere(pcl::PointXYZ(13.15921211,12.35749626,30.58357239), 1.5, 0.0, 0.0, 1.0, "cen2");
+    // viewer->addSphere(pcl::PointXYZ(43.73695755,03.39359474,29.92310524), 1.5, 0.0, 0.0, 1.0, "cen3");
+    // viewer->addSphere(pcl::PointXYZ(70.28045654,-12.58303833, 30.04368019), 1.5, 0.0, 0.0, 1.0, "cen4");
 
     // Show_fov_Index(viewer,1);
-    Show_fov(viewer);//根据视点打印所有fov
-    viewer->addCoordinateSystem (1.0);
-    viewer->initCameraParameters ();
-    while (!viewer->wasStopped ())
+    // Show_fov(viewer);//根据视点打印所有fov
+    // viewer->addCoordinateSystem (1.0);
+    // viewer->initCameraParameters ();
+    // while (!viewer->wasStopped ())
+    // {
+    //     viewer->spinOnce (100);
+    //     std::this_thread::sleep_for(100ms);
+    // }
+    /************************************TSP********************************************/
+    TSP_Slover tsp_cal;
+    list<Eigen::Vector3d> viewpoint;
+    Eigen::Vector3d point;
+    cout << "FOVPointIndices  " <<FOVPointIndices.size() <<  endl;
+    for (const int& num : FOVPointIndices)
     {
-        viewer->spinOnce (100);
-        std::this_thread::sleep_for(100ms);
+        point[0] = cloud ->points[num].x;
+        point[1] = cloud ->points[num].y;
+        point[2] = cloud ->points[num].z;
+        cout << "way: " << point[0]<<"  " << point[1] << "  " <<  point[2] <<endl;
+        viewpoint.push_back(point);
     }
-    while(1);
+    Eigen::Vector3d agent = {0,0,0};
+    
+    ros::NodeHandle nh;
+    ros::Publisher marker_pub = nh.advertise<visualization_msgs::MarkerArray>("visualization_marker", 10);
+
+    start_time = std::chrono::high_resolution_clock::now();
+    tsp_cal = TSP_Slover(agent,viewpoint,2);
+    end_time = std::chrono::high_resolution_clock::now();
+    duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    cout<< "TSP time : " << duration.count() << " ms ;" <<endl;
+    
+    
+    auto waypoint_cal = tsp_cal.get_waypoint();
+    for (const Eigen::Vector3d& point_ : waypoint_cal)
+    {
+        cout << "waypoint: " << point_[0]<<"  " << point_[1] << "  " <<  point_[2] <<endl;
+    }
+    visualization_msgs::MarkerArray visual_able;
+    visual_able = tsp_cal.visualization_msg(waypoint_cal);
+    marker_pub.publish(visual_able);
+
+
+    /**********************************************************************************************/
+
+    
+
+    while(1)
+    {
+         ros::Duration(0.25).sleep();
+        marker_pub.publish(visual_able);
+    }
 }
 
 int main(int argc, char** argv) 
 {
     ros::init(argc, argv, "point_cloud_processing_node");
-    ros::NodeHandle nh;
+    ros::NodeHandle nh_;
     /*tsp_test*/
-    list<Eigen::Vector3d> viewpoint;
     Eigen::Vector3d agentpose = {0,0,0};
-    Eigen::Vector3d n1 = {1,1,1};
-    Eigen::Vector3d n2 = {1,3,1};
-    Eigen::Vector3d n3 = {1,3,4};
-    Eigen::Vector3d n4 = {2,2,1};
-    Eigen::Vector3d n5 = {1,1,6};
-    viewpoint.push_back(n1);
-    viewpoint.push_back(n2);
-    viewpoint.push_back(n3);
-    viewpoint.push_back(n4);
-    viewpoint.push_back(n5);
-    TSP_Slover tsp_test;
-    tsp_test = TSP_Slover(agentpose,viewpoint);
-    auto waypoint_cal = tsp_test.get_waypoint();
-    for (int i = 0 ; i< viewpoint.size(); i++)
-    {
-        cout << "waypoint: " << waypoint_cal[i][0]<<"  " << waypoint_cal[i][1] << "  " <<  waypoint_cal[i][2] <<endl;
-    }
+    // Eigen::Vector3d n1 = {1,0,0};
+    // Eigen::Vector3d n2 = {0,2,0};
+    // Eigen::Vector3d n3 = {2,1,0};
+    // Eigen::Vector3d n4 = {1,0,1};
+    // Eigen::Vector3d n5 = {0,0,4};
+    // list<Eigen::Vector3d> viewpoint;
+    // viewpoint.push_back(n1);
+    // viewpoint.push_back(n2);
+    // viewpoint.push_back(n3);
+    // viewpoint.push_back(n4);
+    // viewpoint.push_back(n5);
 
-    ros::Subscriber sub = nh.subscribe<sensor_msgs::PointCloud2>("/pcl_output", 1, pointCloudCallback);
+    // TSP_Slover tsp_test;
+    // tsp_test = TSP_Slover(agentpose,viewpoint,2);
+    // auto waypoint_cal = tsp_test.get_waypoint();
+    // for (const Eigen::Vector3d& point : waypoint_cal)
+    // {
+    //     cout << "waypoint: " << point[0]<<"  " << point[1] << "  " <<  point[2] <<endl;
+    // }
+    ros::Subscriber sub = nh_.subscribe<sensor_msgs::PointCloud2>("/pcl_output", 1, pointCloudCallback);
     
     ros::spin();
     return 0;

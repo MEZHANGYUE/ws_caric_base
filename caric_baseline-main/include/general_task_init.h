@@ -29,7 +29,8 @@
 
 #include <caric_mission/CreatePPComTopic.h>
 #include <std_msgs/String.h>
-
+#include <sensor_msgs/PointCloud.h>
+#include <geometry_msgs/Point32.h>
 struct position_info{
     Eigen::Vector3d position;
     bool update=false;
@@ -668,8 +669,6 @@ class gcs_task_assign{
             position_pair["/sentosa"] = {Eigen::Vector3d(0, 0, 1), false};
             position_pair["/nanyang"]={Eigen::Vector3d(0, 0, 1), false};
 
-
-
             xmax = -std::numeric_limits<double>::max();
             ymax = -std::numeric_limits<double>::max();
             zmax = -std::numeric_limits<double>::max();
@@ -679,11 +678,13 @@ class gcs_task_assign{
 
             client = nh_ptr_->serviceClient<caric_mission::CreatePPComTopic>("create_ppcom_topic");
             cmd_pub_ = nh_ptr_->advertise<std_msgs::String>("/task_assign", 10);
+            box_pub_ = nh_ptr_->advertise<sensor_msgs::PointCloud>("/boxes_msg", 10);
             srv.request.source = "gcs";
             srv.request.targets.push_back("all");
             srv.request.topic_name = "/task_assign";
             srv.request.package_name = "std_msgs";
             srv.request.message_type = "String";
+
             while (!serviceAvailable)
             {
                 serviceAvailable = ros::service::waitForService("create_ppcom_topic", ros::Duration(10.0));
@@ -705,14 +706,14 @@ class gcs_task_assign{
         ros::ServiceClient client;
 
         ros::Publisher cmd_pub_;
-
+        ros::Publisher box_pub_;
         ros::Subscriber agent_position_sub_;
         ros::Subscriber bbox_sub_;
         
         ros::Timer Agent_ensure_Timer;
         ros::Timer Massage_publish_Timer;
 
-
+        sensor_msgs::PointCloud all_box_point;
         bool get_bbox=false;
         bool finish_massage_generate=false;
         bool agent_info_get=false;
@@ -740,9 +741,59 @@ class gcs_task_assign{
         vector<vector<Boundingbox>> output_path;
 
         string result;
-
+        geometry_msgs::Point32 pose;
         void bboxCallback(const sensor_msgs::PointCloud::ConstPtr &msg)
         {
+            all_box_point.header.frame_id = "world"; 
+            all_box_point.header.stamp = ros::Time();
+            sensor_msgs::PointCloud cloud = *msg;
+            int num_points = cloud.points.size();
+            /**/
+            // if (num_points % 8 == 0 && num_points > 8 * box_set.size())
+            // {
+            //     volumn_total = 0;
+            //     int num_box = num_points / 8;
+            //     all_box_point.points.clear();
+            //     // cout << "calculate the all box point,output with vector<eigen::vector3d> " <<endl;
+            //     for (int i = 0; i < num_box; i++)
+            //     {
+            //         vector<Eigen::Vector3d> point_vec;
+            //         for (int j = 0; j < 8; j++)
+            //         {
+            //             if (cloud.points[8 * i + j].x > xmax)
+            //             {
+            //                 xmax = cloud.points[8 * i + j].x;
+            //             }
+            //             if (cloud.points[8 * i + j].x < xmin)
+            //             {
+            //                 xmin = cloud.points[8 * i + j].x;
+            //             }
+            //             if (cloud.points[8 * i + j].y > ymax)
+            //             {
+            //                 ymax = cloud.points[8 * i + j].y;
+            //             }
+            //             if (cloud.points[8 * i + j].y < ymin)
+            //             {
+            //                 ymin = cloud.points[8 * i + j].y;
+            //             }
+            //             if (cloud.points[8 * i + j].z > zmax)
+            //             {
+            //                 zmax = cloud.points[8 * i + j].z;
+            //             }
+            //             if (cloud.points[8 * i + j].z < zmin)
+            //             {
+            //                 zmin = cloud.points[8 * i + j].z;
+            //             }
+            //             pose.x = cloud.points[8 * i + j].x;
+            //             pose.y =  cloud.points[8 * i + j].y;
+            //             pose.z = cloud.points[8 * i + j].z;
+            //             all_box_point.points.push_back (pose);
+            //         }
+            //     }
+
+            // }
+            // else    cout << "box point is invailue! num_points: " << num_points <<endl;  
+
             if(finish_bbox_record||!agent_info_get)
             {
                 // cout<<"now agent get"<<endl;
@@ -759,8 +810,7 @@ class gcs_task_assign{
                 return;
             }
 
-            sensor_msgs::PointCloud cloud = *msg;
-            int num_points = cloud.points.size();
+            
             if (num_points % 8 == 0 && num_points > 8 * box_set.size())
             {
                 volumn_total = 0;
@@ -866,9 +916,10 @@ class gcs_task_assign{
         void TimerMessageCB(const ros::TimerEvent &){
             if(finish_massage_generate)
             {
-                std_msgs::String task;
+                std_msgs::String task;                
                 task.data=result;
                 cmd_pub_.publish(task);
+                box_pub_.publish(all_box_point);
 
             }
         }
