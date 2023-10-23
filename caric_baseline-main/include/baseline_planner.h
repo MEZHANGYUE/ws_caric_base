@@ -2867,7 +2867,7 @@ class gen_path
     list<std::vector<Eigen::Vector3d>> path_point_set ; //每一个边界框的探索路径点
     list<std::vector<Eigen::Vector3d>> box_points_analysis_res; //储存边界框点分配、排列结果，列表每一个元素表示一个边界框，有几个元素就有几个边界框
     int distant_trans = 2 ;  //定义覆盖路径上升的距离
-
+    int boxdex = 0 ;
     std::vector<Eigen::Vector3d> analysis_single_box(std::vector<Eigen::Vector3d> single_box_points) //对单个边界框的点进行排列
     {
         std::vector<Eigen::Vector3d> single_box_points_ = single_box_points;
@@ -2881,10 +2881,6 @@ class gen_path
                 std::swap(single_box_points_[i], single_box_points_[j]);    
             }
         }
-
-        // sort(single_box_points.begin(), single_box_points.end(), customSort_);
-        
-        
         std::swap(single_box_points_[2], single_box_points_[3]);  //交换前四个点，使前四个点按照顺时针或者逆时针排列
         res = single_box_points_;
         for(int i =4 ; i<8 ; i++)//排列后四个点对应前四个点
@@ -2922,28 +2918,75 @@ class gen_path
         }
         return res;
     }
-    bool is_inbox( Eigen::Vector3d exp_point) //判断一个点是否在任意一个边界框内部
+    bool pointInsidePolygon(const Eigen::Vector3d& point,const Eigen::Vector3d& center, const Eigen::Vector3d& vertex1, const Eigen::Vector3d& vertex2, const Eigen::Vector3d& vertex3, const Eigen::Vector3d& vertex4) 
     {
+        // 计算面的法线向量并单位化
+        Eigen::Vector3d normal = (vertex2 - vertex1).cross(vertex4 - vertex1).normalized();
+        // 计算射线方向
+        Eigen::Vector3d rayDirection = (center - point ).normalized();
+        // 检查射线是否与面平行
+        double dotProduct = rayDirection.dot(normal);  //一个方向在另一个方向上的投影长度
+        if (std::abs(dotProduct) < 1e-6) {
+            return false;  // 射线平行于面，点不在内部
+        }
+        // 计算射线与面的交点
+        double t = normal.dot(vertex1 - point) / dotProduct;
+        // 检查交点是否在射线的正方向上
+        if (t < 0) {
+            return false;  // 交点在射线背后，点不在内部
+        }
+        // 计算交点的坐标
+        Eigen::Vector3d intersectionPoint = point + t * rayDirection;
+        // 检查交点是否在面的内部
+        // 使用点积法检查交点是否在多边形的内部
+        Eigen::Vector3d edge1 = vertex2 - vertex1;
+        Eigen::Vector3d edge2 = vertex3 - vertex2;
+        Eigen::Vector3d edge3 = vertex4 - vertex3;
+        Eigen::Vector3d edge4 = vertex1 - vertex4;
+        Eigen::Vector3d v1 = intersectionPoint - vertex1;
+        Eigen::Vector3d v2 = intersectionPoint - vertex2;
+        Eigen::Vector3d v3 = intersectionPoint - vertex3;
+        Eigen::Vector3d v4 = intersectionPoint - vertex4;
+
+        bool inside = (edge1.cross(v1).dot(normal) >= 0) &&
+                    (edge2.cross(v2).dot(normal) >= 0) &&
+                    (edge3.cross(v3).dot(normal) >= 0) &&
+                    (edge4.cross(v4).dot(normal) >= 0);
+
+        return inside;
+    }
+    
+    bool is_inbox(int boxdex_ , Eigen::Vector3d exp_point) //判断一个点是否在任意一个边界框内部
+    {
+        Eigen::Vector3d center;
+        int flag=0;
         int x_max=0,y_max=0,z_max=0;
         int x_min=INT16_MAX,y_min=INT16_MAX,z_min = INT16_MAX;
+        int dex_= 0;
         for(const std::vector<Eigen::Vector3d>& single_box : box_points_analysis_res) //每一个边界框
         {
-            x_max=0,y_max=0,z_max=0;
-            x_min=INT16_MAX,y_min=INT16_MAX,z_min = INT16_MAX;
-            for(const Eigen::Vector3d& point_member:single_box )
-            {
-                if (point_member[0]>x_max) x_max=point_member[0];
-                if (point_member[1]>y_max) y_max=point_member[1];
-                if (point_member[2]>z_max) z_max=point_member[2];
-                if (point_member[0]<x_min) x_min=point_member[0];
-                if (point_member[1]<y_min) y_min=point_member[1];
-                if (point_member[2]<z_min) z_min=point_member[2];
+            if (dex_ == boxdex_) {dex_++; continue;}    //所在边界框不进行内部检查
+            else     //当前点是否在其他边界框内部
+           {    
+                dex_++;
+                center =( single_box[0] + single_box[6])/2;  //表示一个内部的点
+                //输入点与边界框内部点连接的射线与边界框6个面的交点数量；
+                if (pointInsidePolygon(exp_point,center,single_box[0], single_box[1],single_box[2],single_box[3])) ++flag;
+                if (pointInsidePolygon(exp_point,center,single_box[4], single_box[5],single_box[6],single_box[7])) ++flag;
+                if (pointInsidePolygon(exp_point,center,single_box[1], single_box[2],single_box[6],single_box[5])) ++flag;
+                if (pointInsidePolygon(exp_point,center,single_box[0], single_box[3],single_box[7],single_box[4])) ++flag;
+                if (pointInsidePolygon(exp_point,center,single_box[0], single_box[1],single_box[5],single_box[4])) ++flag;
+                if (pointInsidePolygon(exp_point,center,single_box[3], single_box[2],single_box[6],single_box[7])) ++flag;
+                if (flag == 1)
+                {
+                    flag = 0;return true;
+                } 
+                else flag =0;
             }
-            if (exp_point[0]>x_min && exp_point[0]<x_max && exp_point[1]>y_min && exp_point[1]<y_max && exp_point[2]>z_min && exp_point[2]<z_max ) return true;
         }
         return false;
     }
-    std::vector<Eigen::Vector3d> get_path_point (std::vector<Eigen::Vector3d> box_point)
+    std::vector<Eigen::Vector3d> get_path_point (int boxdex_ , std::vector<Eigen::Vector3d> box_point)  //获取探索者的路径点
     {
         std::vector<Eigen::Vector3d> res;
         Eigen::Vector3d dot;
@@ -2955,7 +2998,7 @@ class gen_path
         {
             scale_sum = i*distant_scale;
             dot = (1-scale_sum)*box_point[i%4] + scale_sum *box_point[i%4+4];  //线性差值
-            // if (!is_inbox(dot)) 
+            if (!is_inbox(boxdex_,dot)) 
                 res.push_back(dot);
         }
         return res;
@@ -2965,25 +3008,12 @@ class gen_path
     {
         
         box_points_analysis_res = analysis_box(box_points);
-
+        boxdex=0;
         for (const std::vector<Eigen::Vector3d>& member : box_points_analysis_res)//生成边界框的路径
         {
-            // for (const Eigen::Vector3d&p :member)
-            // {
-            //     cout <<"point " << p[0] << " "<<p[1] << " "<<p[2] << endl;
-            // }
-            path_point_set.push_back(get_path_point(member));
+            path_point_set.push_back(get_path_point(boxdex,member)); //boxdex : 第几个边界框的路径
+            boxdex++;
         }
-        /*打印每个路径*/
-        // int path_id = 0;
-        // for (const std::vector<Eigen::Vector3d>path : path_point_set)
-        // {
-        //     for (const Eigen::Vector3d& point : path)
-        //     {
-        //         cout << "path " << path_id << " " << point[0] << " " << point[1] << " " << point[2]  << endl;
-        //     }
-        //     path_id++;
-        // }
     }
 };
 
@@ -3119,8 +3149,7 @@ private:
             pose[0] = msg_.points[i].x ;
             pose[1] = msg_.points[i].y ;
             pose[2] = msg_.points[i].z ;
-            boxes_point_.push_back(pose);
-            // cout <<"pose"<< i << ":  " << pose[0] << "  " <<pose[1] << "  " <<pose[2] << endl;            
+            boxes_point_.push_back(pose);       
         }
         Gen_path = gen_path(boxes_point_);  //std::vector<Eigen::Vector3d>
         visual_boxpath = Gen_path. visual_generate () ;
