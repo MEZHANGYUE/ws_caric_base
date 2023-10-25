@@ -653,8 +653,211 @@ private:
     bool use_z = false;                    
 };
 
+class gen_path
+{
+    public:
+    gen_path(){};
+    gen_path(std::vector<Eigen::Vector3d>& box_points ) // n个边界框，8*n个点；
+    {
+       cal_exploer_path(box_points);
+    }
+    list<std::vector<Eigen::Vector3d>>  get_path_point_set()
+    {
+        return path_point_set;
+    }
 
-class gcs_task_assign{
+    visualization_msgs::MarkerArray visual_generate () 
+    {
+        visualization_msgs::MarkerArray get_visual_generate;
+        visualization_msgs::Marker visual_sub;
+        geometry_msgs::Point pose;
+        visual_sub.header.frame_id = "world";
+        visual_sub.header.stamp = ros::Time();
+        visual_sub.ns = "my_namespace";
+        visual_sub.id = 0 ;
+        visual_sub.action = visualization_msgs::Marker::ADD;
+        visual_sub.pose.orientation.w = 1.0;
+        visual_sub.scale.x = 0.2;
+        visual_sub.scale.y = 0.2;
+        visual_sub.scale.z = 0.2;
+        visual_sub.color.a = 1.0; // Don't forget to set the alpha!
+        visual_sub.color.r = 1.0;
+        visual_sub.color.g = 0.0;
+        visual_sub.color.b = 0.0;
+        visual_sub.type = visualization_msgs::Marker::LINE_STRIP;
+        for(const std::vector<Eigen::Vector3d>menber : path_point_set) //每一个边界框中的路径
+        {
+            for( const Eigen::Vector3d&p : menber)
+            {
+                pose.x = p[0];
+                pose.y = p[1];
+                pose.z = p[2];
+                visual_sub.points.push_back(pose);
+            }
+            get_visual_generate.markers.push_back(visual_sub);
+            visual_sub.points.clear();
+            visual_sub.id ++;
+        }
+        return get_visual_generate;
+    }
+
+    private:
+    Eigen::Vector3d singlebox_first_point ;
+    list<std::vector<Eigen::Vector3d>> path_point_set ; //每一个边界框的探索路径点
+    list<std::vector<Eigen::Vector3d>> box_points_analysis_res; //储存边界框点分配、排列结果，列表每一个元素表示一个边界框，有几个元素就有几个边界框
+    int distant_trans = 2 ;  //定义覆盖路径上升的距离
+    int boxdex = 0 ;
+    std::vector<Eigen::Vector3d> analysis_single_box(std::vector<Eigen::Vector3d> single_box_points) //对单个边界框的点进行排列
+    {
+        std::vector<Eigen::Vector3d> single_box_points_ = single_box_points;
+        std::vector<Eigen::Vector3d> res;
+        /*按照每个点到第一个点的距离进行排列*/
+        for(int i=1 ; i<7 ; i++) //遍历确定后面每一个位置的点
+        {
+            for(int j=i+1 ; j<8 ; j++) //遍历需要确定点的后面的所有点进行比较 交换位置
+            {
+                if ((single_box_points_[j] - single_box_points_[0]).norm() < (single_box_points_[i] - single_box_points_[0]).norm())
+                std::swap(single_box_points_[i], single_box_points_[j]);    
+            }
+        }
+        std::swap(single_box_points_[2], single_box_points_[3]);  //交换前四个点，使前四个点按照顺时针或者逆时针排列
+        res = single_box_points_;
+        for(int i =4 ; i<8 ; i++)//排列后四个点对应前四个点
+        {
+            for(int j =4 ; j<8 ; j++)  //排列后四个点与第i个点的距离进行比较 交换位置
+            {
+                if((res[i]-res[i%4]).norm() > (single_box_points_[j]-res[i%4]).norm())      res[i]=single_box_points_[j]; 
+            }
+        }
+        return res;
+    }
+
+    list<std::vector<Eigen::Vector3d>> analysis_box(std::vector<Eigen::Vector3d>& box_points)  //解析边界框的点，列表中每一个元素表示一个边界框
+    {
+        list<std::vector<Eigen::Vector3d>> res_,res;
+        std::vector<Eigen::Vector3d> box_;
+        if(box_points.size() %8 !=0) 
+        {
+            cout << "the box points size is fault in analysis !" <<endl;
+            return res;
+        }
+        box_.clear();
+        for (int i=0 ; i<=box_points.size() ; i++) //将边界框的点分配到列表中
+        {
+            if(i%8 == 0 && !box_.empty()) 
+            {
+                res_.push_back(box_);
+                box_.clear();
+            }
+            if (i<box_points.size()) box_.push_back(box_points[i]);             
+        }
+        for ( const std::vector<Eigen::Vector3d>& member : res_)  // 将每一个边界框的点按照顺便排列好
+        {
+            res.push_back (analysis_single_box(member)) ;
+        }
+        return res;
+    }
+    bool pointInsidePolygon(const Eigen::Vector3d& point,const Eigen::Vector3d& center, const Eigen::Vector3d& vertex1, const Eigen::Vector3d& vertex2, const Eigen::Vector3d& vertex3, const Eigen::Vector3d& vertex4) 
+    {
+        // 计算面的法线向量并单位化
+        Eigen::Vector3d normal = (vertex2 - vertex1).cross(vertex4 - vertex1).normalized();
+        // 计算射线方向
+        Eigen::Vector3d rayDirection = (center - point ).normalized();
+        // 检查射线是否与面平行
+        double dotProduct = rayDirection.dot(normal);  //一个方向在另一个方向上的投影长度
+        if (std::abs(dotProduct) < 1e-6) {
+            return false;  // 射线平行于面，点不在内部
+        }
+        // 计算射线与面的交点
+        double t = normal.dot(vertex1 - point) / dotProduct;
+        // 检查交点是否在射线的正方向上
+        if (t < 0) {
+            return false;  // 交点在射线背后，点不在内部
+        }
+        // 计算交点的坐标
+        Eigen::Vector3d intersectionPoint = point + t * rayDirection;
+        // 检查交点是否在面的内部
+        // 使用点积法检查交点是否在多边形的内部
+        Eigen::Vector3d edge1 = vertex2 - vertex1;
+        Eigen::Vector3d edge2 = vertex3 - vertex2;
+        Eigen::Vector3d edge3 = vertex4 - vertex3;
+        Eigen::Vector3d edge4 = vertex1 - vertex4;
+        Eigen::Vector3d v1 = intersectionPoint - vertex1;
+        Eigen::Vector3d v2 = intersectionPoint - vertex2;
+        Eigen::Vector3d v3 = intersectionPoint - vertex3;
+        Eigen::Vector3d v4 = intersectionPoint - vertex4;
+
+        bool inside = (edge1.cross(v1).dot(normal) >= 0) &&
+                    (edge2.cross(v2).dot(normal) >= 0) &&
+                    (edge3.cross(v3).dot(normal) >= 0) &&
+                    (edge4.cross(v4).dot(normal) >= 0);
+
+        return inside;
+    }
+    
+    bool is_inbox(int boxdex_ , Eigen::Vector3d exp_point) //判断一个点是否在任意一个边界框内部
+    {
+        Eigen::Vector3d center;
+        int flag=0;
+        int x_max=0,y_max=0,z_max=0;
+        int x_min=INT16_MAX,y_min=INT16_MAX,z_min = INT16_MAX;
+        int dex_= 0;
+        for(const std::vector<Eigen::Vector3d>& single_box : box_points_analysis_res) //每一个边界框
+        {
+            if (dex_ == boxdex_) {dex_++; continue;}    //所在边界框不进行内部检查
+            else     //当前点是否在其他边界框内部
+           {    
+                dex_++;
+                center =( single_box[0] + single_box[6])/2;  //表示一个内部的点
+                //输入点与边界框内部点连接的射线与边界框6个面的交点数量；
+                if (pointInsidePolygon(exp_point,center,single_box[0], single_box[1],single_box[2],single_box[3])) ++flag;
+                if (pointInsidePolygon(exp_point,center,single_box[4], single_box[5],single_box[6],single_box[7])) ++flag;
+                if (pointInsidePolygon(exp_point,center,single_box[1], single_box[2],single_box[6],single_box[5])) ++flag;
+                if (pointInsidePolygon(exp_point,center,single_box[0], single_box[3],single_box[7],single_box[4])) ++flag;
+                if (pointInsidePolygon(exp_point,center,single_box[0], single_box[1],single_box[5],single_box[4])) ++flag;
+                if (pointInsidePolygon(exp_point,center,single_box[3], single_box[2],single_box[6],single_box[7])) ++flag;
+                if (flag == 1)
+                {
+                    flag = 0;return true;
+                } 
+                else flag =0;
+            }
+        }
+        return false;
+    }
+    std::vector<Eigen::Vector3d> get_path_point (int boxdex_ , std::vector<Eigen::Vector3d> box_point)  //获取探索者的路径点
+    {
+        std::vector<Eigen::Vector3d> res;
+        Eigen::Vector3d dot;
+        auto hight = (box_point[0] - box_point[4]).norm(); //计算边界框长边的高度
+        double distant_scale = distant_trans/hight ;
+        double scale_sum=distant_scale;
+        res.push_back(box_point[0]);  //第一个点作为起点
+        for(int i=1 ; scale_sum+distant_scale<=1 ; i++)
+        {
+            scale_sum = i*distant_scale;
+            dot = (1-scale_sum)*box_point[i%4] + scale_sum *box_point[i%4+4];  //线性差值
+            if (!is_inbox(boxdex_,dot)) 
+                res.push_back(dot);
+        }
+        return res;
+    }
+
+    void cal_exploer_path(std::vector<Eigen::Vector3d>& box_points)
+    {
+        
+        box_points_analysis_res = analysis_box(box_points);
+        boxdex=0;
+        for (const std::vector<Eigen::Vector3d>& member : box_points_analysis_res)//生成边界框的路径
+        {
+            path_point_set.push_back(get_path_point(boxdex,member)); //boxdex : 第几个边界框的路径
+            boxdex++;
+        }
+    }
+};
+
+class gcs_task_assign   
+{
     public:
         gcs_task_assign(){
 
@@ -678,7 +881,6 @@ class gcs_task_assign{
 
             client = nh_ptr_->serviceClient<caric_mission::CreatePPComTopic>("create_ppcom_topic");
             cmd_pub_ = nh_ptr_->advertise<std_msgs::String>("/task_assign", 10);
-            box_pub_ = nh_ptr_->advertise<sensor_msgs::PointCloud>("/boxes_msg", 10);
             srv.request.source = "gcs";
             srv.request.targets.push_back("all");
             srv.request.topic_name = "/task_assign";
@@ -690,23 +892,26 @@ class gcs_task_assign{
                 serviceAvailable = ros::service::waitForService("create_ppcom_topic", ros::Duration(10.0));
             }
             client.call(srv);
-            
+            boxes_pub = nh_ptr_->advertise<visualization_msgs::MarkerArray>("/boxes_path", 10);  //发布沿着边界框的路径，用于探索者产生点云覆盖地图
             bbox_sub_ = nh_ptr_->subscribe<sensor_msgs::PointCloud>("/gcs/bounding_box_vertices", 10, &gcs_task_assign::bboxCallback, this);
             agent_position_sub_=nh_ptr_->subscribe<std_msgs::String>("/broadcast/gcs", 10, &gcs_task_assign::positionCallback, this);
 
             Agent_ensure_Timer=nh_ptr_->createTimer(ros::Duration(1.0 / 10.0),  &gcs_task_assign::TimerEnsureCB,     this);
             Massage_publish_Timer=nh_ptr_->createTimer(ros::Duration(1.0 / 10.0),  &gcs_task_assign::TimerMessageCB,     this);
+
+            
+            Gen_path = gen_path();
         }
     private:
         ros::NodeHandlePtr nh_ptr_;
-        
+        gen_path Gen_path;
         //communication related param
         bool serviceAvailable = false;
         caric_mission::CreatePPComTopic srv;
         ros::ServiceClient client;
-
+        visualization_msgs::MarkerArray visual_boxpath;
         ros::Publisher cmd_pub_;
-        ros::Publisher box_pub_;
+        ros::Publisher boxes_pub;
         ros::Subscriber agent_position_sub_;
         ros::Subscriber bbox_sub_;
         
@@ -748,61 +953,22 @@ class gcs_task_assign{
             all_box_point.header.stamp = ros::Time();
             sensor_msgs::PointCloud cloud = *msg;
             int num_points = cloud.points.size();
-            /**/
-            // if (num_points % 8 == 0 && num_points > 8 * box_set.size())
-            // {
-            //     volumn_total = 0;
-            //     int num_box = num_points / 8;
-            //     all_box_point.points.clear();
-            //     // cout << "calculate the all box point,output with vector<eigen::vector3d> " <<endl;
-            //     for (int i = 0; i < num_box; i++)
-            //     {
-            //         vector<Eigen::Vector3d> point_vec;
-            //         for (int j = 0; j < 8; j++)
-            //         {
-            //             if (cloud.points[8 * i + j].x > xmax)
-            //             {
-            //                 xmax = cloud.points[8 * i + j].x;
-            //             }
-            //             if (cloud.points[8 * i + j].x < xmin)
-            //             {
-            //                 xmin = cloud.points[8 * i + j].x;
-            //             }
-            //             if (cloud.points[8 * i + j].y > ymax)
-            //             {
-            //                 ymax = cloud.points[8 * i + j].y;
-            //             }
-            //             if (cloud.points[8 * i + j].y < ymin)
-            //             {
-            //                 ymin = cloud.points[8 * i + j].y;
-            //             }
-            //             if (cloud.points[8 * i + j].z > zmax)
-            //             {
-            //                 zmax = cloud.points[8 * i + j].z;
-            //             }
-            //             if (cloud.points[8 * i + j].z < zmin)
-            //             {
-            //                 zmin = cloud.points[8 * i + j].z;
-            //             }
-            //             pose.x = cloud.points[8 * i + j].x;
-            //             pose.y =  cloud.points[8 * i + j].y;
-            //             pose.z = cloud.points[8 * i + j].z;
-            //             all_box_point.points.push_back (pose);
-            //         }
-            //     }
 
-            // }
-            // else    cout << "box point is invailue! num_points: " << num_points <<endl;  
+            std::vector<Eigen::Vector3d> boxes_point_;
+            Eigen::Vector3d pose;
+            for (int i=0 ; i < msg->points.size(); i++)   //将边界框点云表示为向量形式
+            {
+                pose[0] = cloud.points[i].x ;
+                pose[1] = cloud.points[i].y ;
+                pose[2] = cloud.points[i].z ;
+                boxes_point_.push_back(pose);       
+            }
+            Gen_path = gen_path(boxes_point_);  //std::vector<Eigen::Vector3d>
+            visual_boxpath = Gen_path. visual_generate () ;
+            boxes_pub.publish(visual_boxpath);  //发布沿着边界框的路径可视化
 
             if(finish_bbox_record||!agent_info_get)
             {
-                // cout<<"now agent get"<<endl;
-                // for(auto& name:namelist)
-                // {
-                //     if(position_pair[name].update){
-                //         cout<<name<<endl;
-                //     }
-                // }
                 return;
             }
             if(finish_massage_generate)
@@ -810,7 +976,6 @@ class gcs_task_assign{
                 return;
             }
 
-            
             if (num_points % 8 == 0 && num_points > 8 * box_set.size())
             {
                 volumn_total = 0;
@@ -859,8 +1024,6 @@ class gcs_task_assign{
                 Clip_the_task();
                 //Generate the massage
                 generate_massage();
-
-
             }
             else
             {
@@ -913,14 +1076,13 @@ class gcs_task_assign{
                 agent_info_get=true;
             }
         }
-        void TimerMessageCB(const ros::TimerEvent &){
+        void TimerMessageCB(const ros::TimerEvent &)
+        {
             if(finish_massage_generate)
             {
                 std_msgs::String task;                
                 task.data=result;
                 cmd_pub_.publish(task);
-                box_pub_.publish(all_box_point);
-
             }
         }
 

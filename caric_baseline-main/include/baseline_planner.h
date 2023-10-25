@@ -210,7 +210,7 @@ public:
             follower.push_back("/" + name);  //字符串向量保存跟随者（摄影者）；
         }
         team_size = Teamsize_in;
-        fly_in_index = Eigen::Vector3i(0, 0, 0);  //飞入点
+        fly_in_index = Eigen::Vector3i(0, 0, 0);  //目标点栅格坐标
         rotation_matrix = box.getSearchRotation();
         rotation_matrix_inv = rotation_matrix.inverse();
         rotation_quat = Eigen::Quaterniond(rotation_matrix_inv);
@@ -343,7 +343,7 @@ public:
         }
     }
 
-    visualization_msgs::MarkerArray Draw_map()
+    visualization_msgs::MarkerArray Draw_map()   //可视化栅格地图
     {
         visualization_msgs::MarkerArray markers;
         for (int x = 0; x < map_shape.x(); x++)
@@ -356,10 +356,10 @@ public:
                     {
                         markers.markers.push_back(generate_marker(Eigen::Vector3i(x, y, z), 0, markers.markers.size()));
                     }
-                    else if (interest_map[x][y][z] == 1)
-                    {
-                        markers.markers.push_back(generate_marker(Eigen::Vector3i(x, y, z), 1, markers.markers.size()));
-                    }
+                    // else if (interest_map[x][y][z] == 1)
+                    // {
+                    //     markers.markers.push_back(generate_marker(Eigen::Vector3i(x, y, z), 1, markers.markers.size()));
+                    // }
                 }
             }
         }
@@ -1198,7 +1198,11 @@ public:
         }
         return result;
     }
-
+    
+    list<Eigen::Vector3d> get_path_global()
+    {
+        return path_global;
+    }
 private:
     // communication part
     list<string> namelist;
@@ -1428,7 +1432,7 @@ private:
         }
         else
         {
-            marker.color.a = 0.0; // Don't forget to set the alpha!
+            marker.color.a = 0.5; // Don't forget to set the alpha!
             marker.color.r = 0.0;
             marker.color.g = 0.0;
             marker.color.b = 0.0;
@@ -1669,6 +1673,28 @@ private:
         }
     }    
 
+    visualization_msgs::Marker visual_path_global(void)
+    {
+        visualization_msgs::Marker res;
+        geometry_msgs::Point pose;
+        res.header.frame_id = "world";
+        res.header.stamp=ros::Time();
+        res.ns = "line_extraction";
+        res.id = 0;
+        res.type = visualization_msgs::Marker::CUBE;
+        res.scale.x = 0.1;
+        res.color.r = 1.0;
+        res.color.g = 0.0;
+        res.color.b = 0.0;
+        res.color.a = 1.0;
+        for (const Eigen::Vector3d & member : path_global)
+        {
+            pose.x=member[0]; pose.y=member[1]; pose.z=member[2];
+            res.points.push_back(pose);
+        }
+        return res;
+    }
+
     void generate_the_global_path() //将path_index  的点倒序得到全局路径path_globle
     {
         list<Eigen::Vector3i> path_tamp(path_index);
@@ -1875,10 +1901,12 @@ private:
     }
 };
 
+
+
 // class mainbrain is built for the transfer of the map
 class mainbrain
 {
-public:
+    public:
     mainbrain() {}
     mainbrain(string str, string name)
     {
@@ -2003,6 +2031,27 @@ public:
     }
      
      //规划路径
+
+     void replan(Eigen::Vector3d target_)  //用于探索者测试
+     {
+        if (namespace_ == "/jurong" || namespace_ == "/raffles")
+        {
+            ////yolo();
+            Eigen::Vector3d target = map_set[now_id].get_fly_in_point_global();
+            bool flag = false;
+            global_map.Astar_local(target_, namespace_, info_mannager.get_leader(), flag, false);
+            get_way_point = update_target_waypoint();
+            path_show = global_map.get_path_show();
+            map_set[now_id].update_fly_in_index(flag);
+            is_transfer = !map_set[now_id].check_whether_fly_in(false);
+            if (!is_transfer)
+            {
+                map_set[now_id].set_state(1);
+                state = map_set[now_id].get_state();
+            }
+        }
+     }
+
     void replan()
     {
         if (!finish_init)
@@ -2260,6 +2309,7 @@ public:
             visualization_msgs::MarkerArray nullobj;
             return nullobj;
         }
+        // return global_map.Draw_map();
         if (map_set.size() == now_id)
         {
             return global_map.Draw_map();
@@ -2559,7 +2609,32 @@ public:
             }
         }
     }
-
+    
+    list<Eigen::Vector3d> get_globle_path()
+    {
+        return global_map.get_path_global();
+    }
+    visualization_msgs::Marker visual_path_global(void)
+    {
+        visualization_msgs::Marker res;
+        geometry_msgs::Point pose;
+        res.header.frame_id = "world";
+        res.header.stamp=ros::Time();
+        res.ns = "line_extraction";
+        res.id = 0;
+        res.type = visualization_msgs::Marker::CUBE;
+        res.scale.x = 0.1;
+        res.color.r = 1.0;
+        res.color.g = 0.0;
+        res.color.b = 0.0;
+        res.color.a = 1.0;
+        for (const Eigen::Vector3d & member : global_map.get_path_global())
+        {
+            pose.x=member[0]; pose.y=member[1]; pose.z=member[2];
+            res.points.push_back(pose);
+        }
+        return res;
+    }
 private:
     int now_id = 0;
     int map_set_use = 0;
@@ -2577,7 +2652,7 @@ private:
 
     Eigen::Vector3d grid_size;
     vector<int> path_index;
-    double safe_distance = 2.5;
+    double safe_distance = 1.5;
     bool finish_init = false;
     bool odom_get = false;
     string namespace_;
@@ -2814,208 +2889,7 @@ private:
     }
 };
 
-class gen_path
-{
-    public:
-    gen_path(){};
-    gen_path(std::vector<Eigen::Vector3d>& box_points ) // n个边界框，8*n个点；
-    {
-       cal_exploer_path(box_points);
-    }
-    list<std::vector<Eigen::Vector3d>>  get_path_point_set()
-    {
-        return path_point_set;
-    }
 
-    visualization_msgs::MarkerArray visual_generate () 
-    {
-        visualization_msgs::MarkerArray get_visual_generate;
-        visualization_msgs::Marker visual_sub;
-        geometry_msgs::Point pose;
-        visual_sub.header.frame_id = "world";
-        visual_sub.header.stamp = ros::Time();
-        visual_sub.ns = "my_namespace";
-        visual_sub.id = 0 ;
-        visual_sub.action = visualization_msgs::Marker::ADD;
-        visual_sub.pose.orientation.w = 1.0;
-        visual_sub.scale.x = 0.2;
-        visual_sub.scale.y = 0.2;
-        visual_sub.scale.z = 0.2;
-        visual_sub.color.a = 1.0; // Don't forget to set the alpha!
-        visual_sub.color.r = 1.0;
-        visual_sub.color.g = 0.0;
-        visual_sub.color.b = 0.0;
-        visual_sub.type = visualization_msgs::Marker::LINE_STRIP;
-        for(const std::vector<Eigen::Vector3d>menber : path_point_set) //每一个边界框中的路径
-        {
-            for( const Eigen::Vector3d&p : menber)
-            {
-                pose.x = p[0];
-                pose.y = p[1];
-                pose.z = p[2];
-                visual_sub.points.push_back(pose);
-            }
-            get_visual_generate.markers.push_back(visual_sub);
-            visual_sub.points.clear();
-            visual_sub.id ++;
-        }
-        return get_visual_generate;
-    }
-
-    private:
-    Eigen::Vector3d singlebox_first_point ;
-    list<std::vector<Eigen::Vector3d>> path_point_set ; //每一个边界框的探索路径点
-    list<std::vector<Eigen::Vector3d>> box_points_analysis_res; //储存边界框点分配、排列结果，列表每一个元素表示一个边界框，有几个元素就有几个边界框
-    int distant_trans = 2 ;  //定义覆盖路径上升的距离
-    int boxdex = 0 ;
-    std::vector<Eigen::Vector3d> analysis_single_box(std::vector<Eigen::Vector3d> single_box_points) //对单个边界框的点进行排列
-    {
-        std::vector<Eigen::Vector3d> single_box_points_ = single_box_points;
-        std::vector<Eigen::Vector3d> res;
-        /*按照每个点到第一个点的距离进行排列*/
-        for(int i=1 ; i<7 ; i++) //遍历确定后面每一个位置的点
-        {
-            for(int j=i+1 ; j<8 ; j++) //遍历需要确定点的后面的所有点进行比较 交换位置
-            {
-                if ((single_box_points_[j] - single_box_points_[0]).norm() < (single_box_points_[i] - single_box_points_[0]).norm())
-                std::swap(single_box_points_[i], single_box_points_[j]);    
-            }
-        }
-        std::swap(single_box_points_[2], single_box_points_[3]);  //交换前四个点，使前四个点按照顺时针或者逆时针排列
-        res = single_box_points_;
-        for(int i =4 ; i<8 ; i++)//排列后四个点对应前四个点
-        {
-            for(int j =4 ; j<8 ; j++)  //排列后四个点与第i个点的距离进行比较 交换位置
-            {
-                if((res[i]-res[i%4]).norm() > (single_box_points_[j]-res[i%4]).norm())      res[i]=single_box_points_[j]; 
-            }
-        }
-        return res;
-    }
-
-    list<std::vector<Eigen::Vector3d>> analysis_box(std::vector<Eigen::Vector3d>& box_points)  //解析边界框的点，列表中每一个元素表示一个边界框
-    {
-        list<std::vector<Eigen::Vector3d>> res_,res;
-        std::vector<Eigen::Vector3d> box_;
-        if(box_points.size() %8 !=0) 
-        {
-            cout << "the box points size is fault in analysis !" <<endl;
-            return res;
-        }
-        box_.clear();
-        for (int i=0 ; i<=box_points.size() ; i++) //将边界框的点分配到列表中
-        {
-            if(i%8 == 0 && !box_.empty()) 
-            {
-                res_.push_back(box_);
-                box_.clear();
-            }
-            if (i<box_points.size()) box_.push_back(box_points[i]);             
-        }
-        for ( const std::vector<Eigen::Vector3d>& member : res_)  // 将每一个边界框的点按照顺便排列好
-        {
-            res.push_back (analysis_single_box(member)) ;
-        }
-        return res;
-    }
-    bool pointInsidePolygon(const Eigen::Vector3d& point,const Eigen::Vector3d& center, const Eigen::Vector3d& vertex1, const Eigen::Vector3d& vertex2, const Eigen::Vector3d& vertex3, const Eigen::Vector3d& vertex4) 
-    {
-        // 计算面的法线向量并单位化
-        Eigen::Vector3d normal = (vertex2 - vertex1).cross(vertex4 - vertex1).normalized();
-        // 计算射线方向
-        Eigen::Vector3d rayDirection = (center - point ).normalized();
-        // 检查射线是否与面平行
-        double dotProduct = rayDirection.dot(normal);  //一个方向在另一个方向上的投影长度
-        if (std::abs(dotProduct) < 1e-6) {
-            return false;  // 射线平行于面，点不在内部
-        }
-        // 计算射线与面的交点
-        double t = normal.dot(vertex1 - point) / dotProduct;
-        // 检查交点是否在射线的正方向上
-        if (t < 0) {
-            return false;  // 交点在射线背后，点不在内部
-        }
-        // 计算交点的坐标
-        Eigen::Vector3d intersectionPoint = point + t * rayDirection;
-        // 检查交点是否在面的内部
-        // 使用点积法检查交点是否在多边形的内部
-        Eigen::Vector3d edge1 = vertex2 - vertex1;
-        Eigen::Vector3d edge2 = vertex3 - vertex2;
-        Eigen::Vector3d edge3 = vertex4 - vertex3;
-        Eigen::Vector3d edge4 = vertex1 - vertex4;
-        Eigen::Vector3d v1 = intersectionPoint - vertex1;
-        Eigen::Vector3d v2 = intersectionPoint - vertex2;
-        Eigen::Vector3d v3 = intersectionPoint - vertex3;
-        Eigen::Vector3d v4 = intersectionPoint - vertex4;
-
-        bool inside = (edge1.cross(v1).dot(normal) >= 0) &&
-                    (edge2.cross(v2).dot(normal) >= 0) &&
-                    (edge3.cross(v3).dot(normal) >= 0) &&
-                    (edge4.cross(v4).dot(normal) >= 0);
-
-        return inside;
-    }
-    
-    bool is_inbox(int boxdex_ , Eigen::Vector3d exp_point) //判断一个点是否在任意一个边界框内部
-    {
-        Eigen::Vector3d center;
-        int flag=0;
-        int x_max=0,y_max=0,z_max=0;
-        int x_min=INT16_MAX,y_min=INT16_MAX,z_min = INT16_MAX;
-        int dex_= 0;
-        for(const std::vector<Eigen::Vector3d>& single_box : box_points_analysis_res) //每一个边界框
-        {
-            if (dex_ == boxdex_) {dex_++; continue;}    //所在边界框不进行内部检查
-            else     //当前点是否在其他边界框内部
-           {    
-                dex_++;
-                center =( single_box[0] + single_box[6])/2;  //表示一个内部的点
-                //输入点与边界框内部点连接的射线与边界框6个面的交点数量；
-                if (pointInsidePolygon(exp_point,center,single_box[0], single_box[1],single_box[2],single_box[3])) ++flag;
-                if (pointInsidePolygon(exp_point,center,single_box[4], single_box[5],single_box[6],single_box[7])) ++flag;
-                if (pointInsidePolygon(exp_point,center,single_box[1], single_box[2],single_box[6],single_box[5])) ++flag;
-                if (pointInsidePolygon(exp_point,center,single_box[0], single_box[3],single_box[7],single_box[4])) ++flag;
-                if (pointInsidePolygon(exp_point,center,single_box[0], single_box[1],single_box[5],single_box[4])) ++flag;
-                if (pointInsidePolygon(exp_point,center,single_box[3], single_box[2],single_box[6],single_box[7])) ++flag;
-                if (flag == 1)
-                {
-                    flag = 0;return true;
-                } 
-                else flag =0;
-            }
-        }
-        return false;
-    }
-    std::vector<Eigen::Vector3d> get_path_point (int boxdex_ , std::vector<Eigen::Vector3d> box_point)  //获取探索者的路径点
-    {
-        std::vector<Eigen::Vector3d> res;
-        Eigen::Vector3d dot;
-        auto hight = (box_point[0] - box_point[4]).norm(); //计算边界框长边的高度
-        double distant_scale = distant_trans/hight ;
-        double scale_sum=distant_scale;
-        res.push_back(box_point[0]);  //第一个点作为起点
-        for(int i=1 ; scale_sum+distant_scale<=1 ; i++)
-        {
-            scale_sum = i*distant_scale;
-            dot = (1-scale_sum)*box_point[i%4] + scale_sum *box_point[i%4+4];  //线性差值
-            if (!is_inbox(boxdex_,dot)) 
-                res.push_back(dot);
-        }
-        return res;
-    }
-
-    void cal_exploer_path(std::vector<Eigen::Vector3d>& box_points)
-    {
-        
-        box_points_analysis_res = analysis_box(box_points);
-        boxdex=0;
-        for (const std::vector<Eigen::Vector3d>& member : box_points_analysis_res)//生成边界框的路径
-        {
-            path_point_set.push_back(get_path_point(boxdex,member)); //boxdex : 第几个边界框的路径
-            boxdex++;
-        }
-    }
-};
 
 class Agent
 {
@@ -3028,13 +2902,13 @@ public:
         TimerPlan     = nh_ptr->createTimer(ros::Duration(1.0 / 2.0),  &Agent::TimerPlanCB,     this);
         TimerCmdOut   = nh_ptr->createTimer(ros::Duration(1.0 / 10.0), &Agent::TimerCmdOutCB,   this);
         TimerViz      = nh_ptr->createTimer(ros::Duration(1.0 / 1.0),  &Agent::TimerVizCB,      this);
-        boxes_sub_ = nh_ptr->subscribe("/gcs/bounding_box_vertices" , 10, &Agent::BoxesCallback, this);   //订阅边界框的点
+        // boxes_sub_ = nh_ptr->subscribe("/gcs/bounding_box_vertices" , 10, &Agent::BoxesCallback, this);   //订阅边界框的点
         task_sub_ = nh_ptr->subscribe("/task_assign" + nh_ptr->getNamespace(), 10, &Agent::TaskCallback, this);
         
         com_sub_  = nh_ptr->subscribe("/broadcast" + nh_ptr->getNamespace(), 10, &Agent::ComCallback, this);
         client    = nh_ptr->serviceClient<caric_mission::CreatePPComTopic>("/create_ppcom_topic");
         communication_pub_ = nh_ptr->advertise<std_msgs::String>("/broadcast", 10);
-        boxes_pub = nh_ptr->advertise<visualization_msgs::MarkerArray>("/boxes_path", 10);  //发布沿着边界框的路径，用于探索者产生点云覆盖地图
+        glable_path_pub = nh_ptr->advertise<visualization_msgs::Marker>("/glable_path", 10); 
         string str = nh_ptr->getNamespace();
         str.erase(0, 1);
         srv.request.source = str;
@@ -3103,7 +2977,8 @@ private:
     caric_mission::CreatePPComTopic srv; // This PPcom create for communication between neibors;
     ros::ServiceClient client;           // The client to create ppcom
     ros::Publisher communication_pub_;   // PPcom publish com
-    ros::Publisher boxes_pub;
+    // ros::Publisher boxes_pub;
+    ros::Publisher glable_path_pub;
     bool serviceAvailable = false;       // The flag whether the communication service is ready
     ros::Subscriber task_sub_;
     ros::Subscriber com_sub_;
@@ -3132,29 +3007,13 @@ private:
     ros::Publisher path_pub_;
 
     mainbrain mm;
-    gen_path Gen_path;
     // variable for static map
     vector<Eigen::Vector3d> Nbr_point;
     visualization_msgs::MarkerArray visual_boxpath;
+    visualization_msgs::Marker glable_path_;
     bool map_initialise = false;
     bool communication_initialise = false;
-    // Callback function
-    void BoxesCallback (const sensor_msgs::PointCloud::ConstPtr &msg)
-    {
-        std::vector<Eigen::Vector3d> boxes_point_;
-        Eigen::Vector3d pose;
-        sensor_msgs::PointCloud msg_=*msg;
-        for (int i=0 ; i < msg->points.size(); i++)   //将边界框点云表示为向量形式
-        {
-            pose[0] = msg_.points[i].x ;
-            pose[1] = msg_.points[i].y ;
-            pose[2] = msg_.points[i].z ;
-            boxes_point_.push_back(pose);       
-        }
-        Gen_path = gen_path(boxes_point_);  //std::vector<Eigen::Vector3d>
-        visual_boxpath = Gen_path. visual_generate () ;
-       boxes_pub.publish(visual_boxpath);  //发布沿着边界框的路径可视化
-    }
+
     void TaskCallback(const std_msgs::String msg)  //接收到taskassign
     {
         // cout<<"Get the Task message. "<<endl;
@@ -3287,7 +3146,6 @@ private:
             motion_pub_.publish(position_cmd);
             gimbal_pub_.publish(gimbal_msg);
         }
-
         return;
     }
     void TimerVizCB(const ros::TimerEvent &)
