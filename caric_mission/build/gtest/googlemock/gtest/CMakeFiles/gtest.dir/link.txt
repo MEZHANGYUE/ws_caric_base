@@ -1,0 +1,1 @@
+/usr/bin/c++ -fPIC -std=c++17 -Wfatal-errors -O3 -Wall -g  -shared -Wl,-soname,libgtest.so -o libgtest.so CMakeFiles/gtest.dir/src/gtest-all.cc.o  -L/home/yue/ws_caric/src/caric_mission/build/gtest/googlemock/gtest/src -Wl,-rpath,/home/yue/ws_caric/src/caric_mission/build/gtest/googlemock/gtest/src -lpthread 
