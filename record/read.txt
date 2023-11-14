@@ -1,0 +1,2 @@
+ rosrun pcl_ros bag_to_pcd output.bag /jurong/slf_kf_cloud /home/yue/ws_caric/src/record/output
+

@@ -1,8 +1,0 @@
-prefix=/home/yue/ws_caric/src/build/devel
-
-Name: rotors_description
-Description: Description of rotors_description
-Version: 2.2.3
-Cflags: 
-Libs: -L${prefix}/lib 
-Requires: 

@@ -5,7 +5,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
 # add_compile_options(-std=c++11)
-
+# find_package(caric_mission)
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
@@ -17,13 +17,14 @@ find_package(catkin REQUIRED COMPONENTS
   trajectory_msgs
   nav_msgs
   tf
-
+  
   #PCL
   caric_mission#for communication
   pcl_conversions
   pcl_ros  
   trajectory_msgs
 )
+# find_package(caric_mission)
 find_package(OpenMP REQUIRED)
 # find_package(octomap REQUIRED)
 include_directories(${OCTOMAP_INCLUDE_DIRS})
@@ -33,7 +34,7 @@ include_directories(${OCTOMAP_INCLUDE_DIRS})
 ## catkin specific configuration ##
 ###################################
 catkin_package(
-  # caric_mission
+# caric_mission
 #  INCLUDE_DIRS include
 #  LIBRARIES caric_baseline
 #  CATKIN_DEPENDS rospy std_msgs

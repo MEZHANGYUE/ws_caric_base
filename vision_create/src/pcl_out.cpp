@@ -15,7 +15,7 @@ main (int argc, char **argv)
   ros::Publisher pcl_pub = nh.advertise<sensor_msgs::PointCloud2> ("pcl_output", 1); //发布名称为pcl_out的话题，消息队列长度为1，消息类型为sensor_msgs::PointCloud2
   pcl::PointCloud<pcl::PointXYZ> cloud;
   sensor_msgs::PointCloud2 output;
-  pcl::io::loadPCDFile ("/home/yue/ws_caric/src/vision_create/model/real_pcd.pcd", cloud); //修改自己pcd文件所在路径
+  pcl::io::loadPCDFile ("/home/yue/ws_caric/src/vision_create/model/cloud.pcd", cloud); //修改自己pcd文件所在路径
 
   pcl::toROSMsg(cloud, output); //转换为ROS的消息类型
   output.header.frame_id = "odom";//this has been done in order to be able to visualize our PointCloud2 message on the RViz visualizer    

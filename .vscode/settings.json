@@ -81,6 +81,8 @@
         "set": "cpp",
         "cinttypes": "cpp",
         "hash_map": "cpp",
-        "hash_set": "cpp"
+        "hash_set": "cpp",
+        "core": "cpp",
+        "numericaldiff": "cpp"
     }
 }

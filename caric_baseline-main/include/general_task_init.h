@@ -668,7 +668,7 @@ class gen_path
 
     visualization_msgs::MarkerArray visual_generate () 
     {
-        visualization_msgs::MarkerArray get_visual_generate;
+        visualization_msgs::MarkerArray get_visual_generate_,get_visual_generate;
         visualization_msgs::Marker visual_sub;
         geometry_msgs::Point pose;
         visual_sub.header.frame_id = "world";
@@ -694,11 +694,16 @@ class gen_path
                 pose.z = p[2];
                 visual_sub.points.push_back(pose);
             }
-            get_visual_generate.markers.push_back(visual_sub);
+            get_visual_generate_.markers.push_back(visual_sub);
             visual_sub.points.clear();
             visual_sub.id ++;
         }
-        return get_visual_generate;
+        // for ( int i=0 ; i<box_index.size() ; i++)
+        // {
+        //     get_visual_generate.markers.push_back(get_visual_generate_.markers[box_index[i]])
+        // }
+        return get_visual_generate_;
+
     }
 
     private:
@@ -947,8 +952,37 @@ class gcs_task_assign
 
         string result;
         geometry_msgs::Point32 pose;
+
+        visualization_msgs::MarkerArray rearrangeMarkers(const visualization_msgs::MarkerArray x, const std::vector<int> y) 
+        {
+            visualization_msgs::MarkerArray rearrangedArray;
+
+            // Check if the input sizes match
+            // if (x.markers.size() != y.size()) 
+            // {
+            //     cout << "count error " << endl;
+            //     return x;
+            // }
+            // Create a map to store the index of each marker in the original array
+            // std::map<int, size_t> markerIndexMap;
+            // Populate the map with the indices of the markers in the original array
+            // for (size_t i = 0; i < x.markers.size(); ++i) 
+            // {
+            //     markerIndexMap[y[i]] = i;
+            // }
+            // Add markers to the rearranged array in the specified order
+            for (int index : y) 
+            {
+                size_t sizeValue = static_cast<size_t>(index);
+                rearrangedArray.markers.push_back(x.markers[sizeValue]);
+            }
+
+            return rearrangedArray;
+        }
+
         void bboxCallback(const sensor_msgs::PointCloud::ConstPtr &msg)
         {
+            visualization_msgs::MarkerArray visual_boxpath_;
             all_box_point.header.frame_id = "world"; 
             all_box_point.header.stamp = ros::Time();
             sensor_msgs::PointCloud cloud = *msg;
@@ -964,9 +998,10 @@ class gcs_task_assign
                 boxes_point_.push_back(pose);       
             }
             Gen_path = gen_path(boxes_point_);  //std::vector<Eigen::Vector3d>
-            visual_boxpath = Gen_path. visual_generate () ;
+            visual_boxpath_ = Gen_path. visual_generate () ;
+            visual_boxpath = rearrangeMarkers(visual_boxpath_ , box_index);
             boxes_pub.publish(visual_boxpath);  //发布沿着边界框的路径可视化
-
+            
             if(finish_bbox_record||!agent_info_get)
             {
                 return;
